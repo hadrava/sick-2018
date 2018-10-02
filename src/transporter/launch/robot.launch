@@ -1,0 +1,7 @@
+<launch>
+	<!-- Real robot -->
+	<include file="$(find kobuki_node)/launch/minimal.launch" />
+
+	<!-- Common nodes -->
+	<include file="$(find transporter)/launch/full.launch" />
+</launch>

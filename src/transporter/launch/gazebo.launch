@@ -1,0 +1,7 @@
+<launch>
+	<!-- Gazebo simulation -->
+	<include file="$(find kobuki_gazebo)/launch/kobuki_playground.launch" />
+
+	<!-- Common nodes -->
+	<include file="$(find transporter)/launch/full.launch" />
+</launch>

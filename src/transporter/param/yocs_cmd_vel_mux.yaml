@@ -1,0 +1,24 @@
+# Configuration for subscribers to cmd_vel sources.
+#
+# Individual subscriber configuration:
+#   name:           Source name
+#   topic:          The topic that provides cmd_vel messages
+#   timeout:        Time in seconds without incoming messages to consider this topic inactive
+#   priority:       Priority: an UNIQUE unsigned integer from 0 (lowest) to MAX_INT 
+#   short_desc:     Short description (optional)
+
+subscribers:
+  - name:        "Navigation stack"
+    topic:       "/cmd_vel_mux/input/navigation"
+    timeout:     0.5
+    priority:    0
+    short_desc:  "Navigation stack controller"
+  - name:        "Safety Controller"
+    topic:       "/cmd_vel_mux/input/safety_controller"
+    timeout:     0.1
+    priority:    5
+  - name:        "Remote control (teleop)"
+    topic:       "/cmd_vel_mux/input/teleop"
+    timeout:     0.1
+    priority:    10
+publisher:       "/mobile_base/commands/velocity"
