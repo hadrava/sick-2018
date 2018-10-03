@@ -1,0 +1,21 @@
+how to create map
+=================
+
+start in terminal:
+	robot-mapping.sh
+and then start in other terminal:
+	bag-record.sh
+and then start in other terminal:
+	rviz.sh
+
+joystick robot around (be slow, especially turn slowly)
+
+when the mapping is finished, run in other terminal:
+	map-snapshot.sh
+
+it should end automatically
+then kill:
+	bag-record.sh
+then kill:
+	rviz.sh
+	robot-mapping.sh

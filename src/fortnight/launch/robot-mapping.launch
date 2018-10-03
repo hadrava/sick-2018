@@ -1,0 +1,19 @@
+<launch>
+	<!-- Real robot -->
+	<include file="$(find kobuki_node)/launch/minimal.launch" />
+
+	<!-- Common nodes -->
+	<include file="$(find yocs_cmd_vel_mux)/launch/cmd_vel_mux.launch">
+		<arg name="nodelet_manager_name" value="mobile_base_nodelet_manager" />
+		<arg name="config_file" value="$(find fortnight)/param/yocs_cmd_vel_mux.yaml" />
+	</include>
+	<include file="$(find turtlebot_teleop)/launch/logitech.launch" />
+	<include file="$(find fortnight)/launch/sick.launch" />
+
+	<node pkg="tf" type="static_transform_publisher" name="base_link_footprint" args="0 0 z 0.0 0.0 0.0 /base_footprint /base_link 100" />
+
+	<!-- slam nodes -->
+	<node pkg="gmapping" type="slam_gmapping" name="slam_gmapping">
+		<!--<arg name="scan" value="mobile_base_nodelet_manager" />-->
+	</node>
+</launch>
