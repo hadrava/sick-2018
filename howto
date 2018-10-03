@@ -1,0 +1,3 @@
+# create new package
+catkin_create_pkg transporter std_msgs rospy roscpp
+                  pkg name    dep1     dep2  dep3
