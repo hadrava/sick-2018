@@ -11,4 +11,5 @@
 	-->
 	<include file="$(find turtlebot_teleop)/launch/logitech.launch" />
 	<include file="$(find fortnight)/launch/minimal.launch" />
+	<include file="$(find fortnight)/launch/sick.launch" />
 </launch>
