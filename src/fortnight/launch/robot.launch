@@ -4,4 +4,5 @@
 
 	<!-- Common nodes -->
 	<include file="$(find fortnight)/launch/full.launch" />
+	<node pkg="tf" type="static_transform_publisher" name="base_link_footprint" args="0 0 z 0.0 0.0 0.0 /base_footprint /base_link 100" />
 </launch>
