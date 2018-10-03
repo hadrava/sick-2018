@@ -1,0 +1,4 @@
+<launch>
+	<node pkg="fortnight" type="fortnight_state_publisher" name="fortnight_state_publisher"> <!-- name: topic name, type: binary name, pkg: package name -->
+	</node>
+</launch>

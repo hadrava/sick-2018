@@ -1,0 +1,6 @@
+<launch>
+	<node pkg="fortnight" type="fortnight" name="fortnight"> <!-- name: topic name, type: binary name, pkg: package name -->
+		<remap from="fortnight/input/odom" to="/odom" />
+		<remap from="fortnight/output/cmd_vel" to="cmd_vel_mux/input/navigation" />
+	</node>
+</launch>

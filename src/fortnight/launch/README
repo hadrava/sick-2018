@@ -1,0 +1,6 @@
+gazebo.launch				fortnight run in simulation
+robot.launch				fortnight run in real life
+
+full.launch				included by gazebo and robot -- all other nodes needed for fortnight
+kobuki_safety_controller.launch		special launch file for safety controller -- remaps input and output, so it works inside full.launch (but it is disabled)
+minimal.launch				minimal launch for fortnight node itself

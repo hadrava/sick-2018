@@ -10,6 +10,7 @@ find_package(catkin REQUIRED COMPONENTS
   roslaunch
   rospy
   std_msgs
+  tf
 )
 
 ## System dependencies are found with CMake's conventions
@@ -130,16 +131,21 @@ include_directories(
 # add_dependencies(fortnight ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
-# add_executable(fortnight_node src/fortnight_node.cpp)
+add_executable(fortnight src/fortnight.cpp)
+add_executable(fortnight_state_publisher src/fortnight_state_publisher.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-# add_dependencies(fortnight_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(fortnight ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(fortnight_state_publisher ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-# target_link_libraries(fortnight_node
-#   ${catkin_LIBRARIES}
-# )
+target_link_libraries(fortnight
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(fortnight_state_publisher
+  ${catkin_LIBRARIES}
+)
 
 #############
 ## Install ##
@@ -170,6 +176,11 @@ include_directories(
 # )
 
 ## Mark other files for installation (e.g. launch and bag files, etc.)
+install(DIRECTORY
+  launch
+  param
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+)
 # install(FILES
 #   # myfile1
 #   # myfile2

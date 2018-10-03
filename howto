@@ -1,3 +1,6 @@
 # create new package
 catkin_create_pkg transporter std_msgs rospy roscpp
                   pkg name    dep1     dep2  dep3
+# change transporter bumper action:
+# see http://wiki.ros.org/kobuki/Tutorials/Write%20your%20own%20controller%20for%20Kobuki
+# and reimplement kobuki_safe_controller nodelet (download its source and modify it)
