@@ -15,7 +15,7 @@ int main(int argc, char** argv){
 		tf::Quaternion q;
 		q.setRPY(M_PI, 0, -M_PI/4);
 		transform.setRotation(q);
-		br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "base_link", "laser_link"));
+		br.sendTransform(tf::StampedTransform(transform, ros::Time::now(), "base_link", "laser_mount_link"));
 
 		ros::spinOnce();
 
