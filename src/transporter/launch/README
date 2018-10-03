@@ -1,0 +1,6 @@
+gazebo.launch				transporter run in simulation
+robot.launch				transporter run in real life
+
+full.launch				included by gazebo and robot -- all other nodes needed for transporter
+kobuki_safety_controller.launch		special launch file for safety controller -- remaps input and output, so it works inside full.launch
+minimal.launch				minimal launch for transporter node itself
