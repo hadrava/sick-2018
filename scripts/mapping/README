@@ -19,3 +19,17 @@ then kill:
 then kill:
 	rviz.sh
 	robot-mapping.sh
+
+
+how to re-create map
+====================
+
+start in terminal:
+	bag-mapping.sh
+and then start in other terminal:
+	rviz.sh
+and then start in other terminal:
+	bag-play.sh
+will list all bags
+	bag-play.sh [bagname]
+	map-snapshot.sh
