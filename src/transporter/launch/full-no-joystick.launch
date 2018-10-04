@@ -1,0 +1,11 @@
+<!-- All nodes except real hw / gazebo and joystick -->
+<launch>
+	<include file="$(find yocs_cmd_vel_mux)/launch/cmd_vel_mux.launch">
+		<arg name="nodelet_manager_name" value="mobile_base_nodelet_manager" />
+		<arg name="config_file" value="$(find transporter)/param/yocs_cmd_vel_mux.yaml" />
+	</include>
+	<include file="$(find transporter)/launch/kobuki_safety_controller.launch">
+		<arg name="nodelet_manager_name" value="mobile_base_nodelet_manager" />
+	</include>
+	<include file="$(find transporter)/launch/minimal.launch" />
+</launch>
