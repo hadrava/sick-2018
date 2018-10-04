@@ -5,7 +5,7 @@
 		<arg name="config_file" value="$(find fortnight)/param/yocs_cmd_vel_mux.yaml" />
 	</include>
 	<!--
-	<include file="$(find fortnight)/launch/kobuki_safety_controller.launch">
+	<include file="$(find fortnight)/launch/external/kobuki_safety_controller.launch">
 		<arg name="nodelet_manager_name" value="mobile_base_nodelet_manager" />
 	</include>
 	-->

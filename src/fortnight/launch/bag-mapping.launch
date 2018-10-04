@@ -1,0 +1,6 @@
+<launch>
+	<!-- slam nodes -->
+	<node pkg="gmapping" type="slam_gmapping" name="slam_gmapping">
+		<!--<arg name="scan" value="mobile_base_nodelet_manager" />-->
+	</node>
+</launch>

@@ -21,6 +21,21 @@ then kill:
 	robot-mapping.sh
 
 
+how to create map - with remote teleop
+======================================
+start on robot:
+	robot-mapping-with-remote-teleop.sh
+start on robot:
+	bag-record.sh
+
+start on non-robot machine:
+	remote-teleop-to-fortnight.sh
+start on non-robot machine:
+	rviz-remote-to-fortnight.sh
+
+joystick robot around and continue acording to one machine description above
+
+
 how to re-create map
 ====================
 

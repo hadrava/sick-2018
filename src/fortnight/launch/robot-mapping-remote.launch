@@ -7,7 +7,6 @@
 		<arg name="nodelet_manager_name" value="mobile_base_nodelet_manager" />
 		<arg name="config_file" value="$(find fortnight)/param/yocs_cmd_vel_mux.yaml" />
 	</include>
-	<include file="$(find turtlebot_teleop)/launch/logitech.launch" />
 
 	<node pkg="fortnight" type="fortnight_state_publisher" name="fortnight_state_publisher"> <!-- name: topic name, type: binary name, pkg: package name -->
 	</node>
