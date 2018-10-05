@@ -1,1 +1,1 @@
-rviz -d ~/sick2018/rviz/mapping.rviz
+rviz -d ~/sick2018/rviz/localization.rviz

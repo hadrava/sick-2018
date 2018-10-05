@@ -1,24 +1,24 @@
-how to create map
-=================
+test localization on real robot
+===============================
 start in five terminals:
 	roslaunch fortnight robot.launch
-	roslaunch fortnight mapping.launch
 	roslaunch fortnight teleop.launch
 	./bag-record.sh
 	./rviz.sh
 
-joystick robot around (be slow, especially turn slowly)
+	./localization.sh
+it will list all maps
+Rerun with argument:
+	./localization.sh [mapname]
 
-when the mapping is finished, run in other terminal:
-	./map-snapshot.sh
-it should end automatically
+joystick robot around and observe
 
 then kill:
 	./bag-record.sh
 then kill everything els
 
 
-how to create map - with remote teleop
+test localization - with remote teleop
 ======================================
 instead of
 	roslaunch fortnight teleop.launch
@@ -29,22 +29,21 @@ start on non-robot machine:
 	./rviz-remote-to-fortnight.sh
 
 
-how to re-create map
-====================
+test localization from bag
+==========================
 start in three terminals:
 	./bag.sh
-	roslaunch fortnight mapping.launch
 	./rviz.sh
 
+	./localization.sh
+it will list all maps
+Rerun with argument:
+	./localization.sh [mapname]
 
 and then start in other terminal:
 	./bag-play.sh
 it will list all bags
 Rerun with argument:
 	./bag-play.sh [bagname]
-
-when the mapping is finished (and you want to save this map), run in other terminal:
-	./map-snapshot.sh
-it should end automatically
 
 then kill everything
