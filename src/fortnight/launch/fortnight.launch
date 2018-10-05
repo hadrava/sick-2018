@@ -1,4 +1,12 @@
 <launch>
+	<!--
+	<include file="$(find fortnight)/launch/external/kobuki_safety_controller.launch">
+		<arg name="nodelet_manager_name" value="mobile_base_nodelet_manager" />
+	</include>
+	-->
+
+	<include file="$(find fortnight)/launch/includes/amcl.launch" />
+
 	<node pkg="fortnight" type="fortnight" name="fortnight"> <!-- name: topic name, type: binary name, pkg: package name -->
 		<remap from="fortnight/input/odom" to="/odom" />
 		<remap from="fortnight/output/cmd_vel" to="cmd_vel_mux/input/navigation" />

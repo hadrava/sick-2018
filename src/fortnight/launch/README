@@ -1,6 +1,12 @@
-gazebo.launch				fortnight run in simulation
-robot.launch				fortnight run in real life
+# select something form every launch group:
 
-full.launch				included by gazebo and robot -- all other nodes needed for fortnight
-kobuki_safety_controller.launch		special launch file for safety controller -- remaps input and output, so it works inside full.launch (but it is disabled)
-minimal.launch				minimal launch for fortnight node itself
+robot.launch				Robot hardware
+bag.launch				Bag played data
+
+teleop.launch				Logitech joystick teleoperation, can be run over network
+# or nothing for fully autonomous operation
+
+mapping.launch				Used for map creation (usually with teleop or remote teleop)
+localization.launch			Testing localization (can be used with teleop)
+fortnight.launch			Unimplemented -- fully autonomous robot operation
+# or nothing for input data rosbag record

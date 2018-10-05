@@ -1,0 +1,4 @@
+<launch>
+	<!-- slam node -->
+	<node pkg="gmapping" type="slam_gmapping" name="slam_gmapping" />
+</launch>

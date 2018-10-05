@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<robot name="fortnight"
+       xmlns:sensor="http://playerstage.sourceforge.net/gazebo/xmlschema/#sensor"
+       xmlns:controller="http://playerstage.sourceforge.net/gazebo/xmlschema/#controller"
+       xmlns:interface="http://playerstage.sourceforge.net/gazebo/xmlschema/#interface"
+       xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <!-- Defines the kobuki component tag. -->
+  <xacro:include filename="$(find kobuki_description)/urdf/kobuki.urdf.xacro" />
+  <xacro:include filename="$(find sick_tim)/urdf/sick_tim.urdf.xacro" />
+
+
+  <kobuki/>
+
+  <joint name="laser_base_joint" type="fixed">
+	  <!-- some parts are running on indigo, from jade , tehre is constant pi, use it instead on newer robots -->
+	  <xacro:property name="PI" value="3.14159265358979" />
+	  <origin rpy="${PI} 0 -${PI/4 + 0.01}" xyz="0.145 -0.15 0.095"/>
+    	<parent link="base_link"/>
+    	<child link="laser_mount_link"/>
+  	</joint>
+  	<xacro:sick_tim310 name="laser" ros_topic="scan" />
+</robot>
