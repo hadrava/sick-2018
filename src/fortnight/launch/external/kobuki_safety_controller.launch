@@ -1,11 +1,11 @@
 <launch>
-  <arg name="nodelet_manager_name"  default="nodelet_manager"/>
-
-  <node pkg="nodelet" type="nodelet" name="nodelet_manager"  args="manager"/>
-  <node pkg="nodelet" type="nodelet" name="kobuki_safety_controller" args="load kobuki_safety_controller/SafetyControllerNodelet $(arg nodelet_manager_name)">
-    <remap from="kobuki_safety_controller/cmd_vel" to="cmd_vel_mux/input/safety_controller"/>
-    <remap from="kobuki_safety_controller/events/bumper" to="mobile_base/events/bumper"/>
-    <remap from="kobuki_safety_controller/events/cliff" to="mobile_base/events/cliff"/>
-    <remap from="kobuki_safety_controller/events/wheel_drop" to="mobile_base/events/wheel_drop"/>
-  </node>
+	<arg name="nodelet_manager_name" default="nodelet_manager" />
+	
+	<node pkg="nodelet" type="nodelet" name="nodelet_manager" args="manager" />
+	<node pkg="nodelet" type="nodelet" name="kobuki_safety_controller" args="load kobuki_safety_controller/SafetyControllerNodelet $(arg nodelet_manager_name)">
+		<remap from="kobuki_safety_controller/cmd_vel" to="cmd_vel_mux/input/safety_controller" />
+		<remap from="kobuki_safety_controller/events/bumper" to="mobile_base/events/bumper" />
+		<remap from="kobuki_safety_controller/events/cliff" to="mobile_base/events/cliff" />
+		<remap from="kobuki_safety_controller/events/wheel_drop" to="mobile_base/events/wheel_drop" />
+	</node>
 </launch>
