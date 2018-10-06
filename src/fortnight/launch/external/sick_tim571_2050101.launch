@@ -22,6 +22,7 @@
 		<!-- step 2: subtract (in absolute value) 0.1 radians (~ 6 degrees) -->
 		<param name="min_ang" type="double" value="-2.06" />
 		<param name="max_ang" type="double" value="2.1" />
+		<param name="time_offset" type="double" value="0.05" />
 
 		<!-- Older versions of the scanner firmware report an incorrect time_increment.
 				 If you get a warning about time_increment, uncomment this. -->

@@ -1,4 +1,14 @@
 <launch>
 	<!-- slam node -->
-	<node pkg="gmapping" type="slam_gmapping" name="slam_gmapping" />
+	<node pkg="gmapping" type="slam_gmapping" name="slam_gmapping">
+		<rosparam>
+                        delta: 0.02
+                        map_update_interval: 0.3
+                </rosparam>
+                <!--
+                        delta: 0.01
+                        xmin: 50
+                        ymin: 40
+                -->
+	</node>
 </launch>

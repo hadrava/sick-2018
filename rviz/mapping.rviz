@@ -7,10 +7,9 @@ Panels:
         - /Global Options1
         - /Status1
         - /Map1
+        - /Map1/Status1
         - /RobotModel1
-        - /RobotModel1/Status1
         - /LaserScan1
-        - /LaserScan1/Status1
       Splitter Ratio: 0.5
     Tree Height: 885
   - Class: rviz/Selection
@@ -187,11 +186,13 @@ Visualization Manager:
           Value: true
         laser_mount_link:
           Value: true
-        laser_mount_link_old:
-          Value: true
         map:
           Value: true
         odom:
+          Value: true
+        wheel_left_link:
+          Value: true
+        wheel_right_link:
           Value: true
       Marker Scale: 1
       Name: TF
@@ -218,7 +219,9 @@ Visualization Manager:
                 laser_mount_link:
                   laser:
                     {}
-                laser_mount_link_old:
+                wheel_left_link:
+                  {}
+                wheel_right_link:
                   {}
       Update Interval: 0
       Value: true
@@ -245,23 +248,20 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Class: rviz/Orbit
-      Distance: 13.8685
+      Angle: 0
+      Class: rviz/TopDownOrtho
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.06
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
-      Focal Point:
-        X: 0
-        Y: 0
-        Z: 0
       Name: Current View
       Near Clip Distance: 0.01
-      Pitch: 1.5698
+      Scale: 63.5354
       Target Frame: <Fixed Frame>
-      Value: Orbit (rviz)
-      Yaw: 3.1554
+      Value: TopDownOrtho (rviz)
+      X: 0
+      Y: 0
     Saved: ~
 Window Geometry:
   Displays:

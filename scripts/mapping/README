@@ -48,3 +48,7 @@ when the mapping is finished (and you want to save this map), run in other termi
 it should end automatically
 
 then kill everything
+
+NOTES
+=====
+Try it with different precision (delta in fortnight/launch/mapping.launch 0.02 or 0.01)
