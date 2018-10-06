@@ -24,5 +24,10 @@ iface sick0 inet static
 # loopback pro udržení statické ip (pro lokální spojení) i po odpojení interface
 auto lo
 iface lo inet static
-	address 10.196.196.112
+	address 192.168.1.112
 	netmask 255.255.255.255
+
+#roboti:
+#	address 10.196.196.112
+#mart:
+#	address 192.168.1.112

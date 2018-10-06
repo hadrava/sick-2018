@@ -3,6 +3,12 @@
 ff02::1		ip6-allnodes
 ff02::2		ip6-allrouters
 
-10.196.196.104	remora
-10.196.196.112	turtlebot fortnight
-10.196.196.102	robot transporter
+# mart:
+192.168.1.104	remora
+192.168.1.112	turtlebot fortnight
+192.168.1.102	robot transporter
+
+# roboti:
+#10.196.196.104	remora
+#10.196.196.112	turtlebot fortnight
+#10.196.196.102	robot transporter
