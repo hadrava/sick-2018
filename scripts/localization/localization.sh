@@ -3,5 +3,4 @@ if [ "$#" -lt 1 ]; then
 else
 	export MAP_FILE=~/sick2018/maps/"$1"
 	roslaunch fortnight localization.launch
-	fg
 fi

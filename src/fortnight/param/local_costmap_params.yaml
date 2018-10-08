@@ -12,7 +12,7 @@ local_costmap:
         laser_scan_sensor: {
                 sensor_frame: laser,
                 data_type: LaserScan,
-                topic: /scan,
+                topic: /scan_filtered,
                 marking: true,
                 clearing: true,
                 min_obstacle_height: -999.0,
