@@ -16,10 +16,10 @@ iface sick0 inet static
 # iface w0 inet static
 # 	wpa-ssid <TODO>
 # 	wpa-psk <TODO>
-# 	address 10.196.196.112
-# 	broadcast 10.196.196.255
+# 	address 192.168.1.112
+# 	broadcast 192.168.1.255
 # 	netmask 255.255.255.0
-# 	gateway 10.196.196.1
+# 	gateway 192.168.1.104
 
 # loopback pro udržení statické ip (pro lokální spojení) i po odpojení interface
 auto lo
