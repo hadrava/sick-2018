@@ -1,0 +1,1 @@
+../localization/bag-play.sh

@@ -1,0 +1,6 @@
+robot_radius: 0.24
+footprint: [[0.2, 0.2], [-0.2, 0.2], [-0.2, -0.2], [0.2, -0.2]]
+
+inflation_layer:
+        inflation_radius: 0.50
+

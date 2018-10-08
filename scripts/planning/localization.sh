@@ -1,0 +1,1 @@
+../localization/localization.sh
