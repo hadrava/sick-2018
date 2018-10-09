@@ -13,6 +13,11 @@ subscribers:
     timeout:     0.5
     priority:    0
     short_desc:  "Navigation stack controller"
+  - name:        "Twitter"
+    topic:       "/cmd_vel_mux/input/twitter"
+    timeout:     0.5
+    priority:    1
+    short_desc:  "Twitter controller"
   - name:        "Safety Controller"
     topic:       "/cmd_vel_mux/input/safety_controller"
     timeout:     0.1

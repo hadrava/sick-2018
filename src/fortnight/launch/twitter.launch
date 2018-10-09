@@ -1,0 +1,7 @@
+<launch>
+	<node pkg="fortnight" type="twitter" name="twitter" output="screen"> <!-- name: topic name, type: binary name, pkg: package name -->
+		<remap from="twitter/input/odom" to="/odom" />
+		<remap from="twitter/input/scan" to="/scan" />
+		<remap from="twitter/output/cmd_vel" to="cmd_vel_mux/input/twitter" />
+	</node>
+</launch>

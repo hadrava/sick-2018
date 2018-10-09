@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   std_msgs
   tf
+  visualization_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -133,17 +134,22 @@ include_directories(
 ## Declare a C++ executable
 add_executable(fortnight src/fortnight.cpp)
 add_executable(fortnight_state_publisher src/fortnight_state_publisher.cpp)
+add_executable(twitter src/twitter.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 add_dependencies(fortnight ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 add_dependencies(fortnight_state_publisher ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(twitter ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(fortnight
   ${catkin_LIBRARIES}
 )
 target_link_libraries(fortnight_state_publisher
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(twitter
   ${catkin_LIBRARIES}
 )
 

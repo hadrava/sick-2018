@@ -1,0 +1,18 @@
+test navigation on real robot
+=============================
+start in terminals:
+	roslaunch fortnight robot.launch
+	roslaunch fortnight teleop.launch
+or:
+	./bag.sh
+and later:
+	./bag-play.sh
+
+
+	./localization.sh
+it will list all maps
+Rerun with argument:
+	./localization.sh [mapname]
+
+	roslaunch fortnight move_base.launch
+	./rviz.sh
