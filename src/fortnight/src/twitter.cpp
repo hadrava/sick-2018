@@ -8,13 +8,50 @@
 #include <tf/transform_datatypes.h>
 #include <std_msgs/Empty.h>
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/PolygonStamped.h>
 #include <std_msgs/String.h>
 #include <nav_msgs/Odometry.h>
 #include <visualization_msgs/Marker.h>
 #include <sensor_msgs/LaserScan.h>
 
+#define SWAP(a,b) do { float tmp = (a); (a) = (b); (b) = tmp; } while(0)
+
 ros::Publisher marker_p;
 tf::TransformListener *tf_lp;
+geometry_msgs::PolygonStamped transporter_polygon;
+
+bool point_inside_polygon(const geometry_msgs::PointStamped &pt, const geometry_msgs::PolygonStamped &poly) {
+	int count = 0;
+	for (int i = 0; i < poly.polygon.points.size(); i++) {
+		int j = i + 1;
+		j = j % poly.polygon.points.size();
+		int k = i;
+
+
+		if (poly.polygon.points[j].x == poly.polygon.points[k].x)
+			continue;
+		if (poly.polygon.points[j].x > poly.polygon.points[k].x) {
+			SWAP(j, k);
+		}
+		if (pt.point.x < poly.polygon.points[j].x)
+			continue;
+		if (poly.polygon.points[k].x <= pt.point.x)
+			continue;
+
+		double sx = pt.point.x - poly.polygon.points[j].x;
+		double x = poly.polygon.points[k].x - poly.polygon.points[j].x;
+
+		double sy = pt.point.y - poly.polygon.points[j].y;
+		double y = poly.polygon.points[k].y - poly.polygon.points[j].y;
+		//ROS_INFO("sx x sy y  %f, %f, %f, %f", sx, x, sy, y);
+		if (y*sx > sy * x) { // if (y/x*sx > sy)
+			count++;
+		}
+	}
+
+	ROS_INFO("poly_pt  %f, %f, %i", pt.point.x, pt.point.y, count);
+	return count % 2;
+}
 
 void marker(uint32_t marker_id, const geometry_msgs::PoseStamped &pose_stamped, double length = 1.0, bool color = false) {
 	static ros::NodeHandle nh;
@@ -46,8 +83,6 @@ void marker(uint32_t marker_id, const geometry_msgs::PoseStamped &pose_stamped, 
 
 void odom_callback(const nav_msgs::Odometry::ConstPtr &msg) { //ROS_INFO("I heard: [%s]", msg->data.c_str());
 }
-
-#define SWAP(a,b) do { float tmp = (a); (a) = (b); (b) = tmp; } while(0)
 
 double odom_log_x[64];
 double odom_log_y[64];
@@ -179,7 +214,36 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 		}
 	}
 
-	//TODO: filter block_position
+	// filter block_position (polygon)
+	for (int b = 0; b < block_size_ok.size(); b++) {
+		if (block_size_ok[b]) {
+			int i = (block_ends[b] + block_begins[b]) / 2;
+			double angle = msg->angle_min + i * msg->angle_increment;
+			float range = block_range_max[b] - block_range_min[b];
+			ros::Time stamp = msg->header.stamp + ros::Duration(i * msg->time_increment);
+
+			// pt to map
+			geometry_msgs::PointStamped point_laser;
+			geometry_msgs::PointStamped point_map;
+			point_laser.header.frame_id = "/laser";
+			point_laser.header.stamp = stamp;
+			point_laser.point.x = cos(angle) * (block_range_min[b] + range/2 + 0.1755);
+			point_laser.point.y = sin(angle) * (block_range_min[b] + range/2 + 0.1755);
+			point_laser.point.z = 0;
+			try {
+				tf_lp->waitForTransform("/laser", "/map", stamp, ros::Duration(0.1));
+				tf_lp->transformPoint("/map", point_laser, point_map);
+				//ROS_INFO("odom :%f %f", point_odom.point.x, point_odom.point.y);
+
+				block_size_ok[b] = point_inside_polygon(point_map, transporter_polygon);
+			}
+			catch (tf::TransformException &ex) {
+				ROS_ERROR("Failure %s\n", ex.what()); // Print exception which was caught
+				block_size_ok[b] = false;
+			}
+
+		}
+	}
 
 	float max_rssi = -100;
 	int transporter_block = -1;
@@ -205,7 +269,7 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 				i_c++;
 			}
 		}
-		//ROS_INFO("i_c :%i", i_c);
+		ROS_INFO("i_c :%i", i_c);
 		if (i_c) {
 			range /= i_c;
 
@@ -326,10 +390,27 @@ int main(int argc, char **argv) {
 	marker_p = nh.advertise<visualization_msgs::Marker>("twitter_marker", 1);
 
 	ros::Publisher cmd_vel_p = nh.advertise<geometry_msgs::Twist>("twitter/output/cmd_vel", 1);
+	ros::Publisher polygon_p = nh.advertise<geometry_msgs::PolygonStamped>("twitter/output/polygon", 1);
+
+	std::vector<float> transporter_polygon_vect;
+	nh.getParam("twitter/transporter_polygon", transporter_polygon_vect);
+
+
 	//ros::Subscriber odom_s = nh.subscribe("twitter/input/odom", 1000, odom_callback);
 	ros::Subscriber laser_s = nh.subscribe("twitter/input/scan", 1000, laser_callback);
 
 	ros::Rate loop_rate(30); // in Hz
+
+	transporter_polygon.header.frame_id = "/map";
+	transporter_polygon.header.stamp = ros::Time::now();
+	for (int i = 0; i + 1 < transporter_polygon_vect.size(); i += 2) {
+		geometry_msgs::Point32 pt;
+		pt.x = transporter_polygon_vect[i];
+		pt.y = transporter_polygon_vect[i + 1];
+		pt.z = 0.;
+		transporter_polygon.polygon.points.push_back(pt);
+		ROS_INFO("poly_pt  %f, %f", pt.x, pt.y);
+	}
 
 	while (ros::ok()) {
 
@@ -350,6 +431,33 @@ int main(int argc, char **argv) {
 
 		//marker(0, p);
 
+		/*
+		// Test point inside polygon
+		int id = 1;
+		for (float x  = -3; x < -1; x += 0.3) {
+		for (float y  = -1; y < 3; y += 0.3) {
+		id++;
+		geometry_msgs::PointStamped ptx;
+		geometry_msgs::PoseStamped pt;
+		pt.header.frame_id = "/map";
+		pt.header.stamp = ros::Time::now();
+
+		pt.pose.position.x = x;
+		pt.pose.position.y = y;
+		pt.pose.position.z = 0;
+
+		ptx.point.x = x;
+		ptx.point.y = y;
+		ptx.point.z = 0;
+
+		tf::Quaternion myQuaternion;
+		myQuaternion.setRPY( 0, M_PI/2, 0);
+		quaternionTFToMsg(myQuaternion, pt.pose.orientation);
+		marker(id, pt, 0.2, point_inside_polygon(ptx, transporter_polygon));
+
+		}
+		}
+		*/
 
 
 
@@ -363,6 +471,9 @@ int main(int argc, char **argv) {
 		ROS_INFO("speed %f rotation: %f", cmd_vel_m.linear.x, cmd_vel_m.angular.z);
 
 		//cmd_vel_p.publish(cmd_vel_m);
+
+		transporter_polygon.header.stamp = ros::Time::now();
+		polygon_p.publish(transporter_polygon);
 
 		ros::spinOnce();
 
