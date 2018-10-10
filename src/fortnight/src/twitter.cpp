@@ -21,6 +21,7 @@
 #define SWAP(a,b) do { float tmp = (a); (a) = (b); (b) = tmp; } while(0)
 
 ros::Publisher marker_p;
+ros::Publisher cmd_vel_p;
 tf::TransformListener *tf_lp;
 geometry_msgs::PolygonStamped transporter_polygon;
 
@@ -38,11 +39,30 @@ uint32_t state;
 std::vector<struct transporter_observation> history;
 
 
-float param_transporter_diameter;
-float param_x_offset;
-float param_y_offset;
-float param_control_speed_coef;
-float param_control_yaw_speed_coef;
+float param_transporter_radius; // radius of transporter base, documentation says: 0.1755
+float param_x_offset; // x offset maintained during following
+float param_y_offset; // y offset maintained during following should be at least radius of robot + radius of transporter
+float param_control_speed_coef; // P coefficient of error in P regulator of forward speed
+float param_control_yaw_speed_coef; // P coefficient of error in P regulator of turning speed
+
+int param_detect_avg_size; // from how many measurements we should compute the average (3)
+int param_detect_avg_distance; // distance betwwen middles of avg groups (3)
+float param_detect_history_max_duration; // time between first and last used transporter measurements should be ideal_difference = (2* param_detect_avg_distance + param_detect_avg_size) * delay between scans; but this is ideal value, if all laser scans produces measurement. this coefficient sets maximal time difference to param_detect_history_max_duration * ideal difference
+#define LASER_HZ 15
+
+
+bool valid_history() {
+	int last_id = 2 * param_detect_avg_distance + param_detect_avg_size;
+	if (history.size() >= last_id) {
+		int sz = history.size();
+		ros::Duration real_dur = history[sz - 1].stamp - history[sz - last_id].stamp;
+		//return (real_dur.toSec() < (last_id - 1) * (1.0/LASER_HZ) * param_detect_history_max_duration);
+		return real_dur.toSec() * LASER_HZ < (last_id - 1) * param_detect_history_max_duration;
+	}
+	else
+		return false;
+}
+
 
 void marker(uint32_t marker_id, const geometry_msgs::PoseStamped &pose_stamped, double length = 1.0, bool color = false);
 
@@ -155,6 +175,94 @@ void enable_callback(const std_msgs::Bool::ConstPtr &msg) {
 			state = STATE_STORNO;
 	}
 }
+
+
+geometry_msgs::PointStamped history_avg(int s_index, int cnt) { // s_index: first point to avg, cnt: count of points
+	double x = 0.0;
+	double y = 0.0;
+	double t = 0.0;
+	for (int i = s_index; i < s_index + cnt; i++) {
+		x += history[i].odom_point.point.x - history[s_index].odom_point.point.x;
+		y += history[i].odom_point.point.y - history[s_index].odom_point.point.y;
+		ros::Duration dur = history[i].stamp - history[s_index].stamp;
+		t += dur.toSec();
+	}
+	x /= cnt;
+	y /= cnt;
+	t /= cnt;
+
+	geometry_msgs::PointStamped ret;
+	ret.header = history[s_index].odom_point.header;
+	ret.header.stamp = history[s_index].stamp + ros::Duration(t);
+	ret.point.x = history[s_index].odom_point.point.x + x;
+	ret.point.y = history[s_index].odom_point.point.y + y;
+	ret.point.z = 0.0;
+
+	return ret;
+}
+
+geometry_msgs::PoseStamped pose_from_two_points(geometry_msgs::PointStamped a, geometry_msgs::PointStamped b) { // a: new, b: old
+	geometry_msgs::PoseStamped ret;
+	ret.header = a.header;
+
+	ros::Duration dur = a.header.stamp - b.header.stamp;
+	ret.header.stamp = b.header.stamp + ros::Duration(dur.toSec() / 2);
+	ret.pose.position.x = (a.point.x + b.point.x) / 2;
+	ret.pose.position.y = (a.point.y + b.point.y) / 2;
+	ret.pose.position.z = 0.0;
+
+	double dx = a.point.x - b.point.x;
+	double dy = a.point.y - b.point.y;
+
+	double yaw = atan(dy/dx);
+	if (dx < 0)
+		yaw += M_PI;
+	tf::Quaternion quat;
+	quat.setRPY(0, 0, yaw);
+
+	quaternionTFToMsg(quat, ret.pose.orientation);
+
+	return ret;
+}
+
+void control_based_on_history() {
+	int sz = history.size();
+	ROS_INFO("c_b_o_h %i", sz);
+
+	geometry_msgs::PointStamped avgs[3];
+	avgs[0] = history_avg(sz - (param_detect_avg_size + 0 * param_detect_avg_distance), param_detect_avg_size); // newest
+	avgs[1] = history_avg(sz - (param_detect_avg_size + 1 * param_detect_avg_distance), param_detect_avg_size);
+	avgs[2] = history_avg(sz - (param_detect_avg_size + 2 * param_detect_avg_distance), param_detect_avg_size); // oldest
+
+	marker(1, pose_from_two_points(avgs[0], avgs[1]), 0.2, false);
+	marker(2, pose_from_two_points(avgs[1], avgs[2]), 0.2, true);
+
+	/*
+	if (history.size() >= 3) {
+		ros::Duration dur = history[history.size() - 1].stamp - history[history.size() - 3].stamp;
+
+		tf::Quaternion h1_or_inv(
+				history[history.size() - 2].orientation.x,
+				history[history.size() - 2].orientation.y,
+				history[history.size() - 2].orientation.z,
+				- history[history.size() - 2].orientation.w
+				);
+
+		quat *= h1_or_inv;
+		tf::Quaternion speed_norm(
+				quat.x(),
+				quat.y(),
+				quat.z(),
+				quat.w() / (dur.toSec() / 2)
+			);
+
+		speed_norm.normalize();
+		quaternionTFToMsg(speed_norm, history[history.size() - 1].orientation_speed);
+
+	}
+	*/
+}
+
 
 void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I heard: [%s]", msg->data.c_str());
 	if ((state == STATE_DISABLED) || (state == STATE_CANCELLED) || (state == STATE_FINISHED)) {
@@ -302,8 +410,8 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 			geometry_msgs::PointStamped point_map;
 			point_laser.header.frame_id = "/laser";
 			point_laser.header.stamp = stamp;
-			point_laser.point.x = cos(angle) * (block_range_min[b] + range/2 + param_transporter_diameter);
-			point_laser.point.y = sin(angle) * (block_range_min[b] + range/2 + param_transporter_diameter);
+			point_laser.point.x = cos(angle) * (block_range_min[b] + range/2 + param_transporter_radius);
+			point_laser.point.y = sin(angle) * (block_range_min[b] + range/2 + param_transporter_radius);
 			point_laser.point.z = 0;
 			try {
 				tf_lp->waitForTransform("/laser", "/map", stamp, ros::Duration(0.1));
@@ -361,8 +469,8 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 			geometry_msgs::PoseStamped lp;
 			lp.header.frame_id = "/laser";
 			lp.header.stamp = stamp;
-			lp.pose.position.x = cos(angle) * (range + param_transporter_diameter);
-			lp.pose.position.y = sin(angle) * (range + param_transporter_diameter);
+			lp.pose.position.x = cos(angle) * (range + param_transporter_radius);
+			lp.pose.position.y = sin(angle) * (range + param_transporter_radius);
 			lp.pose.position.z = 0;
 			myQuaternion.setRPY( 0, M_PI/2, 0);
 			quaternionTFToMsg(myQuaternion, lp.pose.orientation);
@@ -372,8 +480,8 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 			// to odom and back
 			point_laser.header.frame_id = "/laser";
 			point_laser.header.stamp = stamp;
-			point_laser.point.x = cos(angle) * (range + param_transporter_diameter);
-			point_laser.point.y = sin(angle) * (range + param_transporter_diameter);
+			point_laser.point.x = cos(angle) * (range + param_transporter_radius);
+			point_laser.point.y = sin(angle) * (range + param_transporter_radius);
 			point_laser.point.z = 0;
 
 			try {
@@ -393,57 +501,30 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 		ob.stamp = point_laser.header.stamp;
 		ob.odom_point = point_odom;
 		history.push_back(ob);
+	}
 
-		if (history.size() >= 2) {
-			double dx = history[history.size() - 1].odom_point.point.x - history[history.size() - 2].odom_point.point.x;
-			double dy = history[history.size() - 1].odom_point.point.y - history[history.size() - 2].odom_point.point.y;
-			double distance = sqrt(dx*dx + dy*dy);
-			ros::Duration dur = history[history.size() - 1].stamp - history[history.size() - 2].stamp;
-			history[history.size() - 1].speed = distance / dur.toSec();
-
-			double yaw = atan(dy/dx); // TODO direction
-			if (dx < 0)
-				yaw += M_PI;
-			tf::Quaternion quat;
-			quat.setRPY(0, 0, yaw);
-
-			quaternionTFToMsg(quat, history[history.size() - 1].orientation);
-
-			geometry_msgs::PoseStamped pt;
-			pt.header = history[history.size() - 1].odom_point.header;
-			pt.pose.position = history[history.size() - 1].odom_point.point;
-			pt.pose.orientation = history[history.size() - 1].orientation;
-			marker(1, pt, history[history.size() - 1].speed, true);
-
-			if (history.size() >= 3) {
-				ros::Duration dur = history[history.size() - 1].stamp - history[history.size() - 3].stamp;
-
-				tf::Quaternion h1_or_inv(
-						history[history.size() - 2].orientation.x,
-						history[history.size() - 2].orientation.y,
-						history[history.size() - 2].orientation.z,
-						- history[history.size() - 2].orientation.w
-						);
-
-				quat *= h1_or_inv;
-				tf::Quaternion speed_norm(
-						quat.x(),
-						quat.y(),
-						quat.z(),
-						quat.w() / (dur.toSec() / 2)
-					);
-
-				speed_norm.normalize();
-				quaternionTFToMsg(speed_norm, history[history.size() - 1].orientation_speed);
-
-			}
+	if (state == STATE_WAIT_FOR_OBJECT) {
+		if (valid_history()) {
+			state = STATE_FOLLOWING;
+		}
+	}
+	if (state == STATE_FOLLOWING) {
+		if (valid_history()) {
+			control_based_on_history();
 		}
 	}
 
+	ROS_INFO("l_c %i", __LINE__);
 
+	if ((state == STATE_START) || (state == STATE_WAIT_FOR_OBJECT)) {
+		geometry_msgs::Twist cmd_vel_m;
 
+		cmd_vel_m.linear.x = 0;
+		cmd_vel_m.angular.z = 0;
 
-	if ((state == STATE_DISABLED) || (state == STATE_CANCELLED) || (state == STATE_FINISHED)) {
+		ROS_INFO("speed %f rotation: %f", cmd_vel_m.linear.x, cmd_vel_m.angular.z);
+
+		cmd_vel_p.publish(cmd_vel_m);
 	}
 
 	/*
@@ -481,8 +562,8 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 			geometry_msgs::PoseStamped lp2;
 			lp2.header.frame_id = "/laser";
 			lp2.header.stamp = stamp;
-			lp2.pose.position.x = cos(angle) * (block_range_min[b] + range/2 + param_transporter_diameter);
-			lp2.pose.position.y = sin(angle) * (block_range_min[b] + range/2 + param_transporter_diameter);
+			lp2.pose.position.x = cos(angle) * (block_range_min[b] + range/2 + param_transporter_radius);
+			lp2.pose.position.y = sin(angle) * (block_range_min[b] + range/2 + param_transporter_radius);
 			lp2.pose.position.z = 0;
 
 			myQuaternion.setRPY( 0, M_PI/2, 0);
@@ -523,9 +604,9 @@ int main(int argc, char **argv) {
 
 	state = STATE_DISABLED;
 	// marker init
-	marker_p = nh.advertise<visualization_msgs::Marker>("twitter_marker", 1);
+	marker_p  = nh.advertise<visualization_msgs::Marker>("twitter_marker", 1);
+	cmd_vel_p = nh.advertise<geometry_msgs::Twist>("twitter/output/cmd_vel", 1);
 
-	ros::Publisher cmd_vel_p = nh.advertise<geometry_msgs::Twist>("twitter/output/cmd_vel", 1);
 	ros::Publisher polygon_p = nh.advertise<geometry_msgs::PolygonStamped>("twitter/output/polygon", 1);
 	ros::Publisher state_p   = nh.advertise<std_msgs::UInt32>("twitter/output/state", 1);
 
@@ -551,24 +632,23 @@ int main(int argc, char **argv) {
 	}
 
 	while (ros::ok()) {
-		nh.getParam("twitter/transporter_diameter", param_transporter_diameter);
+		nh.getParam("twitter/transporter_radius", param_transporter_radius);
 		nh.getParam("twitter/x_offset", param_x_offset);
 		nh.getParam("twitter/y_offset", param_y_offset);
 		nh.getParam("twitter/control_speed_coef", param_control_speed_coef);
 		nh.getParam("twitter/control_yaw_speed_coef", param_control_yaw_speed_coef);
 
+		nh.getParam("twitter/detect_avg_size", param_detect_avg_size);
+		nh.getParam("twitter/detect_avg_distance", param_detect_avg_distance);
+		nh.getParam("twitter/detect_history_max_duration", param_detect_history_max_duration);
 
 
 
 
-		geometry_msgs::Twist cmd_vel_m;
 
-		cmd_vel_m.linear.x = 0.1;
-		cmd_vel_m.angular.z = -0.2;
 
-		ROS_INFO("speed %f rotation: %f", cmd_vel_m.linear.x, cmd_vel_m.angular.z);
 
-		//cmd_vel_p.publish(cmd_vel_m);
+
 
 		std_msgs::UInt32 state_msg;
 		state_msg.data = state;
