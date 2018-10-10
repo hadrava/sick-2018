@@ -53,7 +53,14 @@ float param_minimal_transporter_speed; // minimal speed to calculate and predict
 bool param_use_fixed_angular_speed; // set to true, if angular speed is too much jumping
 float param_transporter_angular_speed; // our transporter: -0.2
 float param_speed_avg_size; // number of samples to calculate speed (10)
+
+float param_max_ang_speed; // robot maximal angular speed (1.7)
+float param_manipulation_angle; // 15 degrees = cca 0.25
 #define LASER_HZ 15
+
+
+void marker(uint32_t marker_id, const geometry_msgs::PoseStamped &pose_stamped, double length = 1.0, bool color = false);
+double point_yaw(double x, double y);
 
 
 bool valid_history() {
@@ -70,9 +77,6 @@ bool valid_history() {
 	else
 		return false;
 }
-
-
-void marker(uint32_t marker_id, const geometry_msgs::PoseStamped &pose_stamped, double length = 1.0, bool color = false);
 
 
 bool point_inside_polygon(const geometry_msgs::PointStamped &pt, const geometry_msgs::PolygonStamped &poly) {
@@ -222,9 +226,7 @@ geometry_msgs::PoseStamped pose_from_two_points(const geometry_msgs::PointStampe
 	double dx = a.point.x - b.point.x;
 	double dy = a.point.y - b.point.y;
 
-	double yaw = atan(dy/dx);
-	if (dx < 0)
-		yaw += M_PI;
+	double yaw = point_yaw(dx, dy);
 	tf::Quaternion quat;
 	quat.setRPY(0, 0, yaw);
 	ROS_INFO("pose_from_two_points: %f %f", yaw, quat.getAngleShortestPath());
@@ -301,6 +303,19 @@ tf::Quaternion ang_speed_from_two_poses(const geometry_msgs::PoseStamped &a, con
 	return ret;
 }
 
+tf::Quaternion orientation_to_vector(tf::Quaternion rot, double length) {
+	tf::Quaternion ret(length, 0, 0, 0);
+	ret = rot * ret * rot.inverse();
+	return ret;
+}
+
+double point_yaw(double x, double y) {
+	double yaw = atan(y/x);
+	if (x < 0)
+		yaw += M_PI;
+	return yaw;
+}
+
 void control_based_on_history() {
 	int sz = history.size();
 	ROS_INFO("c_b_o_h %i", sz);
@@ -330,6 +345,7 @@ void control_based_on_history() {
 
 
 	double speed = 0.1;
+
 	geometry_msgs::PointStamped pta, ptb;
 	pta.header = dir[0].header;
 	pta.point = dir[0].pose.position;
@@ -353,6 +369,48 @@ void control_based_on_history() {
 	quaternionTFToMsg(ori, pt.pose.orientation);
 	marker(4, pt, speed, true);
 
+
+
+	if (state == STATE_ROTATING) {
+		geometry_msgs::PointStamped tr_in_base;
+		geometry_msgs::PointStamped next_tr_in_base;
+		geometry_msgs::PointStamped tr_in_odom;
+		geometry_msgs::PointStamped next_tr_in_odom;
+
+		tr_in_odom = history[sz - 1].odom_point;
+
+		tf::Quaternion nori(
+				temp_dir.pose.orientation.x,
+				temp_dir.pose.orientation.y,
+				temp_dir.pose.orientation.z,
+				temp_dir.pose.orientation.w
+				);
+		nori = nori * tf_quat_angle_multiply(ang_speed, ori_dur.toSec() + 1.0 / (LASER_HZ * 2));
+
+		next_tr_in_odom = history[sz - 1].odom_point;
+		tf::Quaternion mov = orientation_to_vector(nori, speed / (LASER_HZ * 2));
+		next_tr_in_odom.point.x += mov.x();
+		next_tr_in_odom.point.y += mov.y();
+		try {
+			tf_lp->waitForTransform("/odom", "/base_link", pt.header.stamp, ros::Duration(0.1));
+			tf_lp->transformPoint("/base_link", tr_in_odom, tr_in_base);
+			tf_lp->transformPoint("/base_link", next_tr_in_odom, next_tr_in_base);
+
+			double yaw_ideal = point_yaw(0, -1);
+			double yaw_tr = point_yaw(tr_in_base.point.x, tr_in_base.point.y);
+			double yaw_next_tr = point_yaw(next_tr_in_base.point.x, next_tr_in_base.point.y);
+
+
+			geometry_msgs::Twist cmd_vel_m;
+			cmd_vel_m.linear.x = 0;
+			cmd_vel_m.angular.z = (yaw_next_tr - yaw_tr) * LASER_HZ + param_control_yaw_speed_coef * (yaw_ideal - yaw_tr);
+			ROS_INFO("speed %f rotation: %f", cmd_vel_m.linear.x, cmd_vel_m.angular.z);
+			cmd_vel_p.publish(cmd_vel_m);
+		}
+		catch (tf::TransformException &ex) {
+			ROS_ERROR("Failure %s\n", ex.what()); // Print exception which was caught
+		}
+	}
 
 	/*
 	if (history.size() >= 3) {
@@ -639,10 +697,10 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 
 	if (state == STATE_WAIT_FOR_OBJECT) {
 		if (valid_history()) {
-			state = STATE_FOLLOWING;
+			state = STATE_ROTATING;
 		}
 	}
-	if (state == STATE_FOLLOWING) {
+	if ((state == STATE_ROTATING) || (state == STATE_FOLLOWING)) {
 		if (valid_history()) {
 			control_based_on_history();
 		}
@@ -652,12 +710,9 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 
 	if ((state == STATE_START) || (state == STATE_WAIT_FOR_OBJECT)) {
 		geometry_msgs::Twist cmd_vel_m;
-
 		cmd_vel_m.linear.x = 0;
 		cmd_vel_m.angular.z = 0;
-
 		ROS_INFO("speed %f rotation: %f", cmd_vel_m.linear.x, cmd_vel_m.angular.z);
-
 		cmd_vel_p.publish(cmd_vel_m);
 	}
 
@@ -781,6 +836,9 @@ int main(int argc, char **argv) {
 		nh.getParam("twitter/transporter_angular_speed", param_transporter_angular_speed);
 
 		nh.getParam("twitter/speed_avg_size", param_speed_avg_size);
+
+		nh.getParam("twitter/max_ang_speed", param_max_ang_speed);
+		nh.getParam("twitter/manipulation_angle", param_manipulation_angle);
 
 
 

@@ -31,6 +31,8 @@
                         control_speed_coef: 0.1
                         control_yaw_speed_coef: 0.1
 
+                        max_ang_speed: 1.7
+                        manipulation_angle: 0.25
                 </rosparam>
 	</node>
 </launch>
