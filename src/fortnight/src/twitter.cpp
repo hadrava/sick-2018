@@ -367,6 +367,7 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 				block_range_min.push_back(r_min);
 				block_range_max.push_back(r_max);
 				block_inten_max.push_back(i_max);
+				//ROS_INFO("brmi brmx %f %f", r_min, r_max);
 				//ROS_INFO("save edge, i:  %i block_size: %i", i, block_size);
 			}
 			else {
@@ -376,7 +377,6 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 	}
 
 	std::vector<bool> block_size_ok;
-	float min_range_max = std::numeric_limits<float>::infinity();
 	for(int b = 0; b < block_begins.size(); b++) {
 		float range = block_range_max[b] - block_range_min[b];
 		double min_angle = msg->angle_min + block_begins[b] * msg->angle_increment;
@@ -386,9 +386,6 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 		float sy = sin(min_angle) * block_range_max[b] - sin(max_angle) * block_range_max[b];
 		if ((range <= 0.4f) && (sx*sx + sy*sy < 0.4 * 0.4)) {
 			block_size_ok.push_back(true);
-			if (min_range_max > block_range_max[b]) {
-				min_range_max = block_range_max[b];
-			}
 			//ROS_INFO("green, b:  %i range  %f, sx %f, sy %f", b, range, sx, sy);
 		}
 		else {
@@ -398,6 +395,7 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 	}
 
 	// filter block_position (polygon)
+	float min_range_max = std::numeric_limits<float>::infinity();
 	for (int b = 0; b < block_size_ok.size(); b++) {
 		if (block_size_ok[b]) {
 			int i = (block_ends[b] + block_begins[b]) / 2;
@@ -419,6 +417,9 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 				//ROS_INFO("odom :%f %f", point_odom.point.x, point_odom.point.y);
 
 				block_size_ok[b] = point_inside_polygon(point_map, transporter_polygon);
+				if ((block_size_ok[b]) && (min_range_max > block_range_max[b])) {
+					min_range_max = block_range_max[b];
+				}
 			}
 			catch (tf::TransformException &ex) {
 				ROS_ERROR("Failure %s\n", ex.what()); // Print exception which was caught
@@ -428,9 +429,21 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 		}
 	}
 
+	/*
+	int count_ip = 0;
+	for (int b = 0; b < block_begins.size(); b++) {
+		count_ip += block_size_ok[b];
+	}
+	ROS_INFO("l_c: inside polygon count :%i, min_range_max: %f", count_ip, min_range_max);
+	*/
+
+
 	float max_rssi = -100;
 	int transporter_block = -1;
 	for(int b = 0; b < block_begins.size(); b++) {
+		//if (block_size_ok[b]) {
+		//	ROS_INFO("l_c: brm[b]: %f", block_range_min[b]);
+		//}
 		if (block_size_ok[b] && (block_range_min[b] < min_range_max + 0.1)) {
 			for (int i = block_begins[b]; i < block_ends[b]; i++) {
 				if (max_rssi < inten_median[i]) {
@@ -440,6 +453,9 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 			}
 		}
 	}
+
+	//ROS_INFO("l_c: transporter_block :%i", transporter_block);
+
 
 	bool transporter_detected = false;
 	geometry_msgs::PointStamped point_laser;
