@@ -15,14 +15,22 @@
                              -5.4, 1
                         ]
                         transporter_radius: 0.1755
+
+                        detect_avg_size: 20
+                        detect_avg_distance: 20
+                        detect_history_max_duration: 1.7
+
+                        minimal_transporter_speed: 0.05
+                        use_fixed_angular_speed: false
+                        transporter_angular_speed: -0.2
+
+                        speed_avg_size: 10
+
                         x_offset: 0.1
                         y_offset: 0.3
                         control_speed_coef: 0.1
                         control_yaw_speed_coef: 0.1
 
-                        detect_avg_size: 20
-                        detect_avg_distance: 20
-                        detect_history_max_duration: 1.7
                 </rosparam>
 	</node>
 </launch>

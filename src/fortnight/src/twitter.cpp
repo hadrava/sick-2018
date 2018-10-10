@@ -45,13 +45,21 @@ float param_y_offset; // y offset maintained during following should be at least
 float param_control_speed_coef; // P coefficient of error in P regulator of forward speed
 float param_control_yaw_speed_coef; // P coefficient of error in P regulator of turning speed
 
-int param_detect_avg_size; // from how many measurements we should compute the average (3)
-int param_detect_avg_distance; // distance betwwen middles of avg groups (3)
+int param_detect_avg_size; // from how many measurements we should compute the average (20)
+int param_detect_avg_distance; // distance betwwen middles of avg groups (20)
 float param_detect_history_max_duration; // time between first and last used transporter measurements should be ideal_difference = (2* param_detect_avg_distance + param_detect_avg_size) * delay between scans; but this is ideal value, if all laser scans produces measurement. this coefficient sets maximal time difference to param_detect_history_max_duration * ideal difference
+float param_minimal_transporter_speed; // minimal speed to calculate and predict transporter movement = 1/4 of nominal speed (0.2) = 0.05
+
+bool param_use_fixed_angular_speed; // set to true, if angular speed is too much jumping
+float param_transporter_angular_speed; // our transporter: -0.2
+float param_speed_avg_size; // number of samples to calculate speed (10)
 #define LASER_HZ 15
 
 
 bool valid_history() {
+	if (history.size() < param_speed_avg_size)
+		return false;
+
 	int last_id = 2 * param_detect_avg_distance + param_detect_avg_size;
 	if (history.size() >= last_id) {
 		int sz = history.size();
@@ -201,7 +209,7 @@ geometry_msgs::PointStamped history_avg(int s_index, int cnt) { // s_index: firs
 	return ret;
 }
 
-geometry_msgs::PoseStamped pose_from_two_points(geometry_msgs::PointStamped a, geometry_msgs::PointStamped b) { // a: new, b: old
+geometry_msgs::PoseStamped pose_from_two_points(const geometry_msgs::PointStamped &a, const geometry_msgs::PointStamped &b) { // a: new, b: old
 	geometry_msgs::PoseStamped ret;
 	ret.header = a.header;
 
@@ -219,8 +227,76 @@ geometry_msgs::PoseStamped pose_from_two_points(geometry_msgs::PointStamped a, g
 		yaw += M_PI;
 	tf::Quaternion quat;
 	quat.setRPY(0, 0, yaw);
+	ROS_INFO("pose_from_two_points: %f %f", yaw, quat.getAngleShortestPath());
 
 	quaternionTFToMsg(quat, ret.pose.orientation);
+
+	return ret;
+}
+
+double speed_from_two_poses(const geometry_msgs::PoseStamped &a, const geometry_msgs::PoseStamped &b) { // a: new, b: old
+	double dx = a.pose.position.x - b.pose.position.x;
+	double dy = a.pose.position.y - b.pose.position.y;
+	ros::Duration dur = a.header.stamp - b.header.stamp;
+
+	double length = sqrt(dx * dx + dy * dy);
+
+	return length / dur.toSec();
+}
+
+tf::Quaternion tf_quat_angle_multiply(const tf::Quaternion &q, double m) {
+	tf::Quaternion ret;
+	double angle = q.getAngle();
+	if (angle > M_PI)
+		angle -= 2 * M_PI;
+	angle = angle * m;
+	ret.setRotation(q.getAxis(), angle);
+	return ret;
+}
+
+tf::Quaternion ang_speed_from_two_poses(const geometry_msgs::PoseStamped &a, const geometry_msgs::PoseStamped &b) { // a: new, b: old
+	tf::Quaternion aq(
+			a.pose.orientation.x,
+			a.pose.orientation.y,
+			a.pose.orientation.z,
+			a.pose.orientation.w
+			);
+
+	tf::Quaternion bq(
+			b.pose.orientation.x,
+			b.pose.orientation.y,
+			b.pose.orientation.z,
+			- b.pose.orientation.w
+			);
+
+	tf::Quaternion r = aq * bq;
+	ros::Duration dur = a.header.stamp - b.header.stamp;
+
+	tf::Quaternion ret = tf_quat_angle_multiply(r, 1 / dur.toSec());
+
+	/*
+	ROS_INFO("ang_speed %f, %f, dur: %f, %f %f %f", angle, ret.getAngleShortestPath(), dur.toSec(), r.getAngleShortestPath(), r.getAngle(), r.w());
+	ROS_INFO("aq %f, bq: %f", aq.getAngleShortestPath(), bq.getAngleShortestPath());
+
+	geometry_msgs::PoseStamped ps;
+	ps.header.frame_id = "/map";
+	ps.header.stamp = ros::Time::now();
+	tf::Quaternion x(0, 1, 0, 0);
+	tf::Quaternion rot = ret;
+	x = rot * x * rot.inverse();
+
+	quaternionTFToMsg(x, ps.pose.orientation);
+	ps.pose.position.x = ps.pose.orientation.x;
+	ps.pose.position.y = ps.pose.orientation.y;
+	ps.pose.position.z = ps.pose.orientation.z;
+
+	ps.pose.orientation.x = rot.x();
+	ps.pose.orientation.y = rot.y();
+	ps.pose.orientation.z = rot.z();
+	ps.pose.orientation.w = rot.w();
+
+	marker(3, ps, 0.2, false);
+	*/
 
 	return ret;
 }
@@ -234,8 +310,49 @@ void control_based_on_history() {
 	avgs[1] = history_avg(sz - (param_detect_avg_size + 1 * param_detect_avg_distance), param_detect_avg_size);
 	avgs[2] = history_avg(sz - (param_detect_avg_size + 2 * param_detect_avg_distance), param_detect_avg_size); // oldest
 
-	marker(1, pose_from_two_points(avgs[0], avgs[1]), 0.2, false);
-	marker(2, pose_from_two_points(avgs[1], avgs[2]), 0.2, true);
+	geometry_msgs::PoseStamped dir[2];
+	dir[0] = pose_from_two_points(avgs[0], avgs[1]);
+	dir[1] = pose_from_two_points(avgs[1], avgs[2]);
+
+	marker(1, dir[0], 0.2, false);
+	marker(2, dir[1], 0.2, true);
+
+	double apx_speed = speed_from_two_poses(dir[0], dir[1]);
+	tf::Quaternion ang_speed(0, 0, 0, 1);
+	if (param_use_fixed_angular_speed) {
+		ang_speed.setRPY(0, 0, param_transporter_angular_speed);
+	}
+	else {
+		if (apx_speed > param_minimal_transporter_speed) {
+			ang_speed = ang_speed_from_two_poses(dir[0], dir[1]);
+		}
+	}
+
+
+	double speed = 0.1;
+	geometry_msgs::PointStamped pta, ptb;
+	pta.header = dir[0].header;
+	pta.point = dir[0].pose.position;
+	ptb.header = dir[1].header;
+	ptb.point = dir[1].pose.position;
+	geometry_msgs::PoseStamped temp_dir = pose_from_two_points(pta, ptb);
+
+	tf::Quaternion ori(
+			temp_dir.pose.orientation.x,
+			temp_dir.pose.orientation.y,
+			temp_dir.pose.orientation.z,
+			temp_dir.pose.orientation.w
+			);
+	ros::Duration ori_dur = history[sz - 1].stamp - temp_dir.header.stamp;
+	ori = ori * tf_quat_angle_multiply(ang_speed, ori_dur.toSec());
+
+	geometry_msgs::PoseStamped pt;
+	pt.header.frame_id = "/odom";
+	pt.header.stamp = history[sz - 1].stamp;
+	pt.pose.position = history[sz - 1].odom_point.point;
+	quaternionTFToMsg(ori, pt.pose.orientation);
+	marker(4, pt, speed, true);
+
 
 	/*
 	if (history.size() >= 3) {
@@ -515,6 +632,7 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 	if (transporter_detected) {
 		struct transporter_observation ob;
 		ob.stamp = point_laser.header.stamp;
+		point_odom.header.stamp = point_laser.header.stamp;
 		ob.odom_point = point_odom;
 		history.push_back(ob);
 	}
@@ -658,10 +776,11 @@ int main(int argc, char **argv) {
 		nh.getParam("twitter/detect_avg_distance", param_detect_avg_distance);
 		nh.getParam("twitter/detect_history_max_duration", param_detect_history_max_duration);
 
+		nh.getParam("twitter/minimal_transporter_speed", param_minimal_transporter_speed);
+		nh.getParam("twitter/use_fixed_angular_speed", param_use_fixed_angular_speed);
+		nh.getParam("twitter/transporter_angular_speed", param_transporter_angular_speed);
 
-
-
-
+		nh.getParam("twitter/speed_avg_size", param_speed_avg_size);
 
 
 
