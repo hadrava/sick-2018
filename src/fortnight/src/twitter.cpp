@@ -10,15 +10,42 @@
 #include <geometry_msgs/Twist.h>
 #include <geometry_msgs/PolygonStamped.h>
 #include <std_msgs/String.h>
+#include <std_msgs/UInt32.h>
+#include <std_msgs/Bool.h>
 #include <nav_msgs/Odometry.h>
 #include <visualization_msgs/Marker.h>
 #include <sensor_msgs/LaserScan.h>
+
+#include "states.h"
 
 #define SWAP(a,b) do { float tmp = (a); (a) = (b); (b) = tmp; } while(0)
 
 ros::Publisher marker_p;
 tf::TransformListener *tf_lp;
 geometry_msgs::PolygonStamped transporter_polygon;
+
+struct transporter_observation {
+	ros::Time stamp;
+	geometry_msgs::PointStamped odom_point;
+	double speed;
+	geometry_msgs::Quaternion orientation;
+	geometry_msgs::Quaternion orientation_speed;
+};
+
+
+uint32_t state;
+
+std::vector<struct transporter_observation> history;
+
+
+float param_transporter_diameter;
+float param_x_offset;
+float param_y_offset;
+float param_control_speed_coef;
+float param_control_yaw_speed_coef;
+
+void marker(uint32_t marker_id, const geometry_msgs::PoseStamped &pose_stamped, double length = 1.0, bool color = false);
+
 
 bool point_inside_polygon(const geometry_msgs::PointStamped &pt, const geometry_msgs::PolygonStamped &poly) {
 	int count = 0;
@@ -53,7 +80,36 @@ bool point_inside_polygon(const geometry_msgs::PointStamped &pt, const geometry_
 	return count % 2;
 }
 
-void marker(uint32_t marker_id, const geometry_msgs::PoseStamped &pose_stamped, double length = 1.0, bool color = false) {
+void point_inside_polygon_test() {
+	// call from main loop
+	int id = 1;
+	for (float x  = -3; x < -1; x += 0.3) {
+	for (float y  = -1; y < 3; y += 0.3) {
+	id++;
+	geometry_msgs::PointStamped ptx;
+	geometry_msgs::PoseStamped pt;
+	pt.header.frame_id = "/map";
+	pt.header.stamp = ros::Time::now();
+
+	pt.pose.position.x = x;
+	pt.pose.position.y = y;
+	pt.pose.position.z = 0;
+
+	ptx.point.x = x;
+	ptx.point.y = y;
+	ptx.point.z = 0;
+
+	tf::Quaternion myQuaternion;
+	myQuaternion.setRPY( 0, M_PI/2, 0);
+	quaternionTFToMsg(myQuaternion, pt.pose.orientation);
+	marker(id, pt, 0.2, point_inside_polygon(ptx, transporter_polygon));
+
+	}
+	}
+}
+
+
+void marker(uint32_t marker_id, const geometry_msgs::PoseStamped &pose_stamped, double length, bool color) {
 	static ros::NodeHandle nh;
 	visualization_msgs::Marker marker_m;
 	marker_m.header.frame_id = pose_stamped.header.frame_id;
@@ -89,7 +145,26 @@ double odom_log_y[64];
 int odom_log_b = 0;
 int odom_log_e = 0;
 
+void enable_callback(const std_msgs::Bool::ConstPtr &msg) {
+	if (msg->data) {
+		if ((state == STATE_DISABLED) || (state == STATE_CANCELLED) || (state == STATE_FINISHED))
+			state = STATE_WAIT_FOR_OBJECT;
+	}
+	else {
+		if (state == STATE_FOLLOWING)
+			state = STATE_STORNO;
+	}
+}
+
 void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I heard: [%s]", msg->data.c_str());
+	if ((state == STATE_DISABLED) || (state == STATE_CANCELLED) || (state == STATE_FINISHED)) {
+		return;
+	}
+	if (state == STATE_START) {
+		history.clear();
+		state = STATE_WAIT_FOR_OBJECT;
+	}
+
 	int size = msg->ranges.size();
 
 	std::vector<float> median;
@@ -227,8 +302,8 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 			geometry_msgs::PointStamped point_map;
 			point_laser.header.frame_id = "/laser";
 			point_laser.header.stamp = stamp;
-			point_laser.point.x = cos(angle) * (block_range_min[b] + range/2 + 0.1755);
-			point_laser.point.y = sin(angle) * (block_range_min[b] + range/2 + 0.1755);
+			point_laser.point.x = cos(angle) * (block_range_min[b] + range/2 + param_transporter_diameter);
+			point_laser.point.y = sin(angle) * (block_range_min[b] + range/2 + param_transporter_diameter);
 			point_laser.point.z = 0;
 			try {
 				tf_lp->waitForTransform("/laser", "/map", stamp, ros::Duration(0.1));
@@ -258,6 +333,9 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 		}
 	}
 
+	bool transporter_detected = false;
+	geometry_msgs::PointStamped point_laser;
+	geometry_msgs::PointStamped point_odom;
 	if (transporter_block != -1) {
 		int i_s = 0;
 		int i_c = 0;
@@ -283,8 +361,8 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 			geometry_msgs::PoseStamped lp;
 			lp.header.frame_id = "/laser";
 			lp.header.stamp = stamp;
-			lp.pose.position.x = cos(angle) * (range + 0.1755);
-			lp.pose.position.y = sin(angle) * (range + 0.1755);
+			lp.pose.position.x = cos(angle) * (range + param_transporter_diameter);
+			lp.pose.position.y = sin(angle) * (range + param_transporter_diameter);
 			lp.pose.position.z = 0;
 			myQuaternion.setRPY( 0, M_PI/2, 0);
 			quaternionTFToMsg(myQuaternion, lp.pose.orientation);
@@ -292,17 +370,16 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 
 
 			// to odom and back
-			geometry_msgs::PointStamped point_laser;
-			geometry_msgs::PointStamped point_odom;
 			point_laser.header.frame_id = "/laser";
 			point_laser.header.stamp = stamp;
-			point_laser.point.x = cos(angle) * (range + 0.1755);
-			point_laser.point.y = sin(angle) * (range + 0.1755);
+			point_laser.point.x = cos(angle) * (range + param_transporter_diameter);
+			point_laser.point.y = sin(angle) * (range + param_transporter_diameter);
 			point_laser.point.z = 0;
 
 			try {
 				tf_lp->waitForTransform("/laser", "/odom", stamp, ros::Duration(0.1));
 				tf_lp->transformPoint("/odom", point_laser, point_odom);
+				transporter_detected = true;
 				ROS_INFO("odom :%f %f", point_odom.point.x, point_odom.point.y);
 			}
 			catch (tf::TransformException &ex) {
@@ -311,8 +388,66 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 		}
 	}
 
+	if (transporter_detected) {
+		struct transporter_observation ob;
+		ob.stamp = point_laser.header.stamp;
+		ob.odom_point = point_odom;
+		history.push_back(ob);
+
+		if (history.size() >= 2) {
+			double dx = history[history.size() - 1].odom_point.point.x - history[history.size() - 2].odom_point.point.x;
+			double dy = history[history.size() - 1].odom_point.point.y - history[history.size() - 2].odom_point.point.y;
+			double distance = sqrt(dx*dx + dy*dy);
+			ros::Duration dur = history[history.size() - 1].stamp - history[history.size() - 2].stamp;
+			history[history.size() - 1].speed = distance / dur.toSec();
+
+			double yaw = atan(dy/dx); // TODO direction
+			if (dx < 0)
+				yaw += M_PI;
+			tf::Quaternion quat;
+			quat.setRPY(0, 0, yaw);
+
+			quaternionTFToMsg(quat, history[history.size() - 1].orientation);
+
+			geometry_msgs::PoseStamped pt;
+			pt.header = history[history.size() - 1].odom_point.header;
+			pt.pose.position = history[history.size() - 1].odom_point.point;
+			pt.pose.orientation = history[history.size() - 1].orientation;
+			marker(1, pt, history[history.size() - 1].speed, true);
+
+			if (history.size() >= 3) {
+				ros::Duration dur = history[history.size() - 1].stamp - history[history.size() - 3].stamp;
+
+				tf::Quaternion h1_or_inv(
+						history[history.size() - 2].orientation.x,
+						history[history.size() - 2].orientation.y,
+						history[history.size() - 2].orientation.z,
+						- history[history.size() - 2].orientation.w
+						);
+
+				quat *= h1_or_inv;
+				tf::Quaternion speed_norm(
+						quat.x(),
+						quat.y(),
+						quat.z(),
+						quat.w() / (dur.toSec() / 2)
+					);
+
+				speed_norm.normalize();
+				quaternionTFToMsg(speed_norm, history[history.size() - 1].orientation_speed);
+
+			}
+		}
+	}
+
+
+
+
+	if ((state == STATE_DISABLED) || (state == STATE_CANCELLED) || (state == STATE_FINISHED)) {
+	}
 
 	/*
+	// show arrows of all potential blocks
 	int green_count = 0;
 	for(int b = 0; b < block_begins.size(); b++) {
 		int i = (block_ends[b] + block_begins[b]) / 2;
@@ -346,8 +481,8 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 			geometry_msgs::PoseStamped lp2;
 			lp2.header.frame_id = "/laser";
 			lp2.header.stamp = stamp;
-			lp2.pose.position.x = cos(angle) * (block_range_min[b] + range/2 + 0.1755);
-			lp2.pose.position.y = sin(angle) * (block_range_min[b] + range/2 + 0.1755);
+			lp2.pose.position.x = cos(angle) * (block_range_min[b] + range/2 + param_transporter_diameter);
+			lp2.pose.position.y = sin(angle) * (block_range_min[b] + range/2 + param_transporter_diameter);
 			lp2.pose.position.z = 0;
 
 			myQuaternion.setRPY( 0, M_PI/2, 0);
@@ -386,18 +521,21 @@ int main(int argc, char **argv) {
 	tf::TransformListener tf_l;
 	tf_lp = &tf_l;
 
+	state = STATE_DISABLED;
 	// marker init
 	marker_p = nh.advertise<visualization_msgs::Marker>("twitter_marker", 1);
 
 	ros::Publisher cmd_vel_p = nh.advertise<geometry_msgs::Twist>("twitter/output/cmd_vel", 1);
 	ros::Publisher polygon_p = nh.advertise<geometry_msgs::PolygonStamped>("twitter/output/polygon", 1);
+	ros::Publisher state_p   = nh.advertise<std_msgs::UInt32>("twitter/output/state", 1);
 
 	std::vector<float> transporter_polygon_vect;
 	nh.getParam("twitter/transporter_polygon", transporter_polygon_vect);
 
 
 	//ros::Subscriber odom_s = nh.subscribe("twitter/input/odom", 1000, odom_callback);
-	ros::Subscriber laser_s = nh.subscribe("twitter/input/scan", 1000, laser_callback);
+	ros::Subscriber laser_s = nh.subscribe("twitter/input/scan", 10, laser_callback);
+	ros::Subscriber enable_s = nh.subscribe("twitter/input/enable", 1, enable_callback);
 
 	ros::Rate loop_rate(30); // in Hz
 
@@ -413,55 +551,15 @@ int main(int argc, char **argv) {
 	}
 
 	while (ros::ok()) {
+		nh.getParam("twitter/transporter_diameter", param_transporter_diameter);
+		nh.getParam("twitter/x_offset", param_x_offset);
+		nh.getParam("twitter/y_offset", param_y_offset);
+		nh.getParam("twitter/control_speed_coef", param_control_speed_coef);
+		nh.getParam("twitter/control_yaw_speed_coef", param_control_yaw_speed_coef);
 
 
 
 
-		geometry_msgs::PoseStamped p;
-		p.header.frame_id = "/odom";
-		p.header.stamp = ros::Time::now();
-
-		p.pose.position.x = 0;
-		p.pose.position.y = 0;
-		p.pose.position.z = 0;
-		p.pose.orientation.x = 0.0;
-		p.pose.orientation.y = 0.0;
-		p.pose.orientation.z = 0.0;
-		p.pose.orientation.w = 1.0;
-
-		//marker(0, p);
-
-		/*
-		// Test point inside polygon
-		int id = 1;
-		for (float x  = -3; x < -1; x += 0.3) {
-		for (float y  = -1; y < 3; y += 0.3) {
-		id++;
-		geometry_msgs::PointStamped ptx;
-		geometry_msgs::PoseStamped pt;
-		pt.header.frame_id = "/map";
-		pt.header.stamp = ros::Time::now();
-
-		pt.pose.position.x = x;
-		pt.pose.position.y = y;
-		pt.pose.position.z = 0;
-
-		ptx.point.x = x;
-		ptx.point.y = y;
-		ptx.point.z = 0;
-
-		tf::Quaternion myQuaternion;
-		myQuaternion.setRPY( 0, M_PI/2, 0);
-		quaternionTFToMsg(myQuaternion, pt.pose.orientation);
-		marker(id, pt, 0.2, point_inside_polygon(ptx, transporter_polygon));
-
-		}
-		}
-		*/
-
-
-
-		///
 
 		geometry_msgs::Twist cmd_vel_m;
 
@@ -472,11 +570,14 @@ int main(int argc, char **argv) {
 
 		//cmd_vel_p.publish(cmd_vel_m);
 
+		std_msgs::UInt32 state_msg;
+		state_msg.data = state;
+		state_p.publish(state_msg);
+
 		transporter_polygon.header.stamp = ros::Time::now();
 		polygon_p.publish(transporter_polygon);
 
 		ros::spinOnce();
-
 		loop_rate.sleep();
 	}
 

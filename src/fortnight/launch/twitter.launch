@@ -3,7 +3,7 @@
 		<remap from="twitter/input/odom" to="/odom" />
 		<remap from="twitter/input/scan" to="/scan" />
 		<remap from="twitter/output/cmd_vel" to="cmd_vel_mux/input/twitter" />
-		<rosparam>
+                <rosparam>
                         transporter_polygon: [
                              -5, 2,
                              -4, 2.4,
@@ -14,6 +14,11 @@
                              -5, 0,
                              -5.4, 1
                         ]
+                        transporter_diameter: 0.1755
+                        x_offset: 0.1
+                        y_offset: 0.3
+                        control_speed_coef: 0.1
+                        control_yaw_speed_coef: 0.1
                 </rosparam>
 	</node>
 </launch>
