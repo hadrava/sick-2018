@@ -20,8 +20,8 @@
                         control_speed_coef: 0.1
                         control_yaw_speed_coef: 0.1
 
-                        detect_avg_size: 3
-                        detect_avg_distance: 2
+                        detect_avg_size: 20
+                        detect_avg_distance: 20
                         detect_history_max_duration: 1.7
                 </rosparam>
 	</node>
