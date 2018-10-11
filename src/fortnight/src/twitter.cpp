@@ -17,6 +17,7 @@
 #include <sensor_msgs/LaserScan.h>
 
 #include "states.h"
+#include "grabber-actions.h"
 
 #define SWAP(a,b) do { float tmp = (a); (a) = (b); (b) = tmp; } while(0)
 
@@ -201,12 +202,9 @@ void enable_callback(const std_msgs::Bool::ConstPtr &msg) {
 	}
 }
 
+bool grabber_at_home = true;
 void grabber_callback(const std_msgs::Bool::ConstPtr &msg) { // grabber is at home
-	if (msg->data) {
-		if (state == STATE_PERFORMING_ACTION) {
-			state = STATE_LEAVING;
-		}
-	}
+	grabber_at_home = msg->data;
 }
 
 
@@ -355,7 +353,7 @@ tf::Quaternion orientation_of_speed(const tf::Quaternion &ang_speed, const geome
 	return ori * tf_quat_angle_multiply(ang_speed, ori_dur.toSec());
 }
 
-bool rotation_control(const geometry_msgs::PointStamped &tr_in_base, const geometry_msgs::PointStamped &next_tr_in_base) {
+bool rotation_control(const geometry_msgs::PointStamped &tr_in_base, const geometry_msgs::PointStamped &next_tr_in_base) { // returns true if transporter is exactly* on our right side, *) within manipulation_angle
 	bool we_are_locked_on = false;
 
 	double yaw_ideal = point_yaw(0, -1);
@@ -409,7 +407,45 @@ bool transporter_passes_by(const tf::Quaternion &transporter_vector, const geome
 	return dot < 0;
 }
 
-void follower_control(const geometry_msgs::PointStamped &tr_in_base, const geometry_msgs::PointStamped &direction_tr_in_base, double transporter_speed, const tf::Quaternion &transporter_ang_speed) {
+bool rotation_control_with_caclulations(const geometry_msgs::PointStamped &tr_in_odom, const geometry_msgs::PoseStamped *dir, double speed, const tf::Quaternion &ang_speed) { // returns true if we should change our state to following
+	bool we_are_locked_on;
+	geometry_msgs::PointStamped tr_in_base;
+
+	geometry_msgs::PointStamped next_tr_in_odom;
+	geometry_msgs::PointStamped next_tr_in_base;
+	next_tr_in_odom = tr_in_odom;
+	tf::Quaternion nori = orientation_of_speed(ang_speed, dir[0], dir[1], tr_in_odom.header.stamp, 1.0 / (LASER_HZ * 2));
+	tf::Quaternion mov = orientation_to_vector(nori, speed / (LASER_HZ * 2));
+	next_tr_in_odom.point.x += mov.x();
+	next_tr_in_odom.point.y += mov.y();
+
+	geometry_msgs::PointStamped we_in_base;
+	geometry_msgs::PointStamped we_in_odom;
+	we_in_base.header = tr_in_odom.header;
+	we_in_base.header.frame_id = "/base_link";
+	we_in_base.point.x = 0;
+	we_in_base.point.y = 0;
+	we_in_base.point.z = 0;
+
+	try {
+		tf_lp->waitForTransform("/odom", "/base_link", tr_in_odom.header.stamp, ros::Duration(0.1));
+		tf_lp->transformPoint("/base_link", tr_in_odom, tr_in_base);
+		tf_lp->transformPoint("/base_link", next_tr_in_odom, next_tr_in_base);
+		tf_lp->transformPoint("/odom", we_in_base, we_in_odom);
+
+		we_are_locked_on = rotation_control(tr_in_base, next_tr_in_base);
+	}
+	catch (tf::TransformException &ex) {
+		ROS_ERROR("Failure %s\n", ex.what()); // Print exception which was caught
+	}
+
+	if (we_are_locked_on && transporter_passes_by(mov, we_in_odom.point, tr_in_odom.point)) {
+		return true;
+	}
+	return false;
+}
+
+uint32_t follower_control(const geometry_msgs::PointStamped &tr_in_base, const geometry_msgs::PointStamped &direction_tr_in_base, double transporter_speed, const tf::Quaternion &transporter_ang_speed) {
 	// circle properties
 	tf::Quaternion ang_direction = orientation_to_vector(transporter_ang_speed, 1.0);
 	double our_ang_speed = point_yaw(ang_direction.x(), ang_direction.y());
@@ -449,7 +485,55 @@ void follower_control(const geometry_msgs::PointStamped &tr_in_base, const geome
 		cmd_vel_m.angular.z = param_max_ang_speed;
 
 	ROS_INFO("following speed %f (tr: %f, y*ang: %f) rotation: %f", our_speed, transporter_speed, y_ang_forward_speed, our_ang_speed);
-	cmd_vel_p.publish(cmd_vel_m);
+
+	uint32_t state = 0;
+	if (
+			(x_error < 0.02) && (x_error > - 0.02) &&
+			(y_error < 0.02) && (y_error > - 0.02) &&
+			(yaw_error < param_manipulation_angle) && (y_error > - param_manipulation_angle)
+	   ) {
+		state |= 2;
+	}
+
+	if (cmd_vel_m.linear.x < 0) {
+		ROS_INFO("following speed negative, giving control to rotation");
+		return state;
+	}
+	else {
+		cmd_vel_p.publish(cmd_vel_m);
+		state |= 1;
+		return state;
+	}
+}
+
+bool follower_control_with_caclulations(const geometry_msgs::PointStamped &tr_in_odom, const geometry_msgs::PoseStamped *dir, double speed, const tf::Quaternion &ang_speed) { // returns true if we should change our state to following
+	geometry_msgs::PointStamped tr_in_base;
+
+	geometry_msgs::PointStamped direction_tr_in_odom;
+	geometry_msgs::PointStamped direction_tr_in_base;
+	direction_tr_in_odom = tr_in_odom;
+	tf::Quaternion nori = orientation_of_speed(ang_speed, dir[0], dir[1], tr_in_odom.header.stamp, 0.0);
+	tf::Quaternion mov = orientation_to_vector(nori, speed / (LASER_HZ * 2));
+	direction_tr_in_odom.point.x += mov.x();
+	direction_tr_in_odom.point.y += mov.y();
+
+	try {
+		tf_lp->waitForTransform("/odom", "/base_link", tr_in_odom.header.stamp, ros::Duration(0.1));
+		tf_lp->transformPoint("/base_link", tr_in_odom, tr_in_base);
+		tf_lp->transformPoint("/base_link", direction_tr_in_odom, direction_tr_in_base);
+
+		uint32_t follower_state = follower_control(tr_in_base, direction_tr_in_base, speed, ang_speed);
+		if (follower_state == 3) // 3: error is minimal and speed is not negative --> next state
+			return true;
+		if ((follower_state & 1) == 0) { // 0 and 2:  negative speed --> rotate in place (recovery option, should not happen often)
+			rotation_control_with_caclulations(tr_in_odom, dir, speed, ang_speed);
+		}
+		// 1: there is error and we are moving forward --> stay in current state
+	}
+	catch (tf::TransformException &ex) {
+		ROS_ERROR("Failure %s\n", ex.what()); // Print exception which was caught
+	}
+	return false;
 }
 
 void control_based_on_history() {
@@ -495,70 +579,41 @@ void control_based_on_history() {
 
 	// Real Control
 	if (state == STATE_ROTATING) {
-		bool we_are_locked_on;
-		geometry_msgs::PointStamped tr_in_odom;
-		geometry_msgs::PointStamped tr_in_base;
-		tr_in_odom = history[sz - 1].odom_point;
+		bool advance_state = rotation_control_with_caclulations(history[sz - 1].odom_point, dir, speed, ang_speed);
 
-		geometry_msgs::PointStamped next_tr_in_odom;
-		geometry_msgs::PointStamped next_tr_in_base;
-		next_tr_in_odom = history[sz - 1].odom_point;
-		tf::Quaternion nori = orientation_of_speed(ang_speed, dir[0], dir[1], history[sz - 1].stamp, 1.0 / (LASER_HZ * 2));
-		tf::Quaternion mov = orientation_to_vector(nori, speed / (LASER_HZ * 2));
-		next_tr_in_odom.point.x += mov.x();
-		next_tr_in_odom.point.y += mov.y();
-
-		geometry_msgs::PointStamped we_in_base;
-		geometry_msgs::PointStamped we_in_odom;
-		we_in_base.header = history[sz - 1].odom_point.header;
-		we_in_base.header.frame_id = "/base_link";
-		we_in_base.point.x = 0;
-		we_in_base.point.y = 0;
-		we_in_base.point.z = 0;
-
-		try {
-			tf_lp->waitForTransform("/odom", "/base_link", tr_in_odom.header.stamp, ros::Duration(0.1));
-			tf_lp->transformPoint("/base_link", tr_in_odom, tr_in_base);
-			tf_lp->transformPoint("/base_link", next_tr_in_odom, next_tr_in_base);
-			tf_lp->transformPoint("/odom", we_in_base, we_in_odom);
-
-			we_are_locked_on = rotation_control(tr_in_base, next_tr_in_base);
-		}
-		catch (tf::TransformException &ex) {
-			ROS_ERROR("Failure %s\n", ex.what()); // Print exception which was caught
-		}
-
-		if (we_are_locked_on && transporter_passes_by(mov, we_in_odom.point, history[sz - 1].odom_point.point)) {
+		if (advance_state) {
 			state = STATE_FOLLOWING;
-			ROS_INFO("transporter_pass, state -> following");
+			ROS_INFO("transporter_pass, state: rotating --> following");
 		}
 	}
-	else if (
-			(state == STATE_FOLLOWING) ||
-			(state == STATE_PERFORMING_ACTION) ||
-			(state == STATE_LEAVING)
-		) {
-		geometry_msgs::PointStamped tr_in_odom;
-		geometry_msgs::PointStamped tr_in_base;
-		tr_in_odom = history[sz - 1].odom_point;
-
-		geometry_msgs::PointStamped direction_tr_in_odom;
-		geometry_msgs::PointStamped direction_tr_in_base;
-		direction_tr_in_odom = history[sz - 1].odom_point;
-		tf::Quaternion nori = orientation_of_speed(ang_speed, dir[0], dir[1], history[sz - 1].stamp, 0.0);
-		tf::Quaternion mov = orientation_to_vector(nori, speed / (LASER_HZ * 2));
-		direction_tr_in_odom.point.x += mov.x();
-		direction_tr_in_odom.point.y += mov.y();
-
-		try {
-			tf_lp->waitForTransform("/odom", "/base_link", tr_in_odom.header.stamp, ros::Duration(0.1));
-			tf_lp->transformPoint("/base_link", tr_in_odom, tr_in_base);
-			tf_lp->transformPoint("/base_link", direction_tr_in_odom, direction_tr_in_base);
-
-			follower_control(tr_in_base, direction_tr_in_base, speed, ang_speed);
+	else if (state == STATE_FOLLOWING) {
+		// this state is sending GRABBER_PREPARE
+		bool advance_state = rotation_control_with_caclulations(history[sz - 1].odom_point, dir, speed, ang_speed);
+		if (advance_state && !grabber_at_home) {
+			state = STATE_PERFORMING_ACTION;
+			ROS_INFO("following correctly, state: following --> performing_action");
+			// TODO send grabber grab
 		}
-		catch (tf::TransformException &ex) {
-			ROS_ERROR("Failure %s\n", ex.what()); // Print exception which was caught
+	}
+	else if (state == STATE_PERFORMING_ACTION) {
+		// this state is sending GRABBER_GRAB
+		rotation_control_with_caclulations(history[sz - 1].odom_point, dir, speed, ang_speed);
+		if (grabber_at_home) {
+			state = STATE_LEAVING;
+		}
+	}
+	else if (state == STATE_LEAVING) {
+		bool advance_state = rotation_control_with_caclulations(history[sz - 1].odom_point, dir, speed, ang_speed);
+		if (advance_state) {
+			state = STATE_FINISHED;
+			ROS_INFO("disappeared correctly, state: leaving -> finished");
+		}
+	}
+	else if (state == STATE_STORNO) {
+		bool advance_state = rotation_control_with_caclulations(history[sz - 1].odom_point, dir, speed, ang_speed);
+		if (advance_state) {
+			state = STATE_CANCELLED;
+			ROS_INFO("disappeared correctly, state: storno -> cancel");
 		}
 	}
 
@@ -1005,6 +1060,14 @@ int main(int argc, char **argv) {
 
 		std_msgs::UInt32 state_msg;
 		state_msg.data = state;
+		state_p.publish(state_msg);
+
+		std_msgs::UInt32 grabber_msg;
+		grabber_msg.data = GRABBER_DISABLED;
+		if (state == STATE_FOLLOWING)
+			grabber_msg.data = GRABBER_PREPARE;
+		if (state == STATE_PERFORMING_ACTION)
+			grabber_msg.data = GRABBER_GRAB;
 		state_p.publish(state_msg);
 
 		transporter_polygon.header.stamp = ros::Time::now();
