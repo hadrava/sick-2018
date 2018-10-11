@@ -55,6 +55,7 @@ float param_transporter_angular_speed; // our transporter: -0.2
 float param_speed_avg_size; // number of samples to calculate speed (10)
 
 float param_max_ang_speed; // robot maximal angular speed (1.7)
+float param_min_ang_speed; // robot maximal angular speed offset
 float param_manipulation_angle; // 15 degrees = cca 0.25
 #define LASER_HZ 15
 
@@ -400,10 +401,28 @@ void control_based_on_history() {
 			double yaw_tr = point_yaw(tr_in_base.point.x, tr_in_base.point.y);
 			double yaw_next_tr = point_yaw(next_tr_in_base.point.x, next_tr_in_base.point.y);
 
+			double diff_ri = yaw_tr - yaw_ideal;
+			if (diff_ri > M_PI)
+				diff_ri -= 2 * M_PI;
+			double diff_nc = yaw_next_tr - yaw_tr;
+			if (diff_nc > M_PI)
+				diff_nc -= 2 * M_PI;
+
+			ROS_INFO("real ideal %f %f diff %f", yaw_tr, yaw_ideal, diff_ri);
+			ROS_INFO("next curr %f %f diff %f", yaw_next_tr, yaw_tr, diff_nc);
 
 			geometry_msgs::Twist cmd_vel_m;
 			cmd_vel_m.linear.x = 0;
-			cmd_vel_m.angular.z = (yaw_next_tr - yaw_tr) * LASER_HZ + param_control_yaw_speed_coef * (yaw_ideal - yaw_tr);
+			cmd_vel_m.angular.z = diff_nc * LASER_HZ + param_control_yaw_speed_coef * diff_ri;
+			if (cmd_vel_m.angular.z < 0)
+				cmd_vel_m.angular.z -= param_min_ang_speed;
+			else
+				cmd_vel_m.angular.z += param_min_ang_speed;
+			if (cmd_vel_m.angular.z < -param_max_ang_speed)
+				cmd_vel_m.angular.z = -param_max_ang_speed;
+			if (cmd_vel_m.angular.z > param_max_ang_speed)
+				cmd_vel_m.angular.z = param_max_ang_speed;
+
 			ROS_INFO("speed %f rotation: %f", cmd_vel_m.linear.x, cmd_vel_m.angular.z);
 			cmd_vel_p.publish(cmd_vel_m);
 		}
@@ -838,6 +857,7 @@ int main(int argc, char **argv) {
 		nh.getParam("twitter/speed_avg_size", param_speed_avg_size);
 
 		nh.getParam("twitter/max_ang_speed", param_max_ang_speed);
+		nh.getParam("twitter/min_ang_speed", param_min_ang_speed);
 		nh.getParam("twitter/manipulation_angle", param_manipulation_angle);
 
 
