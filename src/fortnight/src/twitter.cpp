@@ -1083,7 +1083,12 @@ int main(int argc, char **argv) {
 			grabber_msg.data = GRABBER_PREPARE;
 		if (state == STATE_PERFORMING_ACTION)
 			grabber_msg.data = GRABBER_GRAB;
-		grabber_p.publish(grabber_msg);
+		if ((state == STATE_DISABLED) || (state == STATE_CANCELLED) || (state == STATE_FINISHED)) {
+			// Do not send action
+		}
+		else {
+			grabber_p.publish(grabber_msg);
+		}
 
 		transporter_polygon.header.stamp = ros::Time::now();
 		polygon_p.publish(transporter_polygon);
