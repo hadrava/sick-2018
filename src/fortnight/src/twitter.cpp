@@ -19,7 +19,7 @@
 #include "states.h"
 #include "grabber-actions.h"
 
-#define SWAP(a,b) do { float tmp = (a); (a) = (b); (b) = tmp; } while(0)
+#define SWAP(a,b) do { double tmp = (a); (a) = (b); (b) = tmp; } while(0)
 
 ros::Publisher marker_p;
 ros::Publisher cmd_vel_p;
@@ -59,6 +59,7 @@ float param_manipulation_angle; // 15 degrees = cca 0.25
 
 float param_x_offset; // x offset maintained during following
 float param_y_offset; // y offset maintained during following should be at least radius of robot + radius of transporter
+float param_y_offset_leaving; // y offset maintained during leaving
 
 float param_x_error_to_x_speed_coef;
 float param_x_error_to_yaw_speed_coef;
@@ -67,6 +68,8 @@ float param_y_error_to_yaw_speed_coef;
 float param_yaw_error_to_x_speed_coef;
 float param_yaw_error_to_yaw_speed_coef;
 float param_max_xy_error_yaw_mod; // limit on how much can be yaw modified by x and y errors
+
+float param_allowed_locked_error; // 0.02 (2 cm)
 #define LASER_HZ 15
 
 
@@ -455,6 +458,9 @@ uint32_t follower_control(const geometry_msgs::PointStamped &tr_in_base, const g
 	// errors:
 	double x_error = tr_in_base.point.x - param_x_offset;
 	double y_error = tr_in_base.point.y - param_y_offset;
+	if (state == STATE_LEAVING)
+		y_error = tr_in_base.point.y - param_y_offset_leaving;
+
 	double yaw_error = point_yaw(direction_tr_in_base.point.x - tr_in_base.point.x, direction_tr_in_base.point.y - tr_in_base.point.y);
 	if (yaw_error > M_PI)
 		yaw_error -= 2 * M_PI;
@@ -488,8 +494,8 @@ uint32_t follower_control(const geometry_msgs::PointStamped &tr_in_base, const g
 
 	uint32_t state = 0;
 	if (
-			(x_error < 0.02) && (x_error > - 0.02) &&
-			(y_error < 0.02) && (y_error > - 0.02) &&
+			(x_error < param_allowed_locked_error) && (x_error > - param_allowed_locked_error) &&
+			(y_error < param_allowed_locked_error) && (y_error > - param_allowed_locked_error) &&
 			(yaw_error < param_manipulation_angle) && (y_error > - param_manipulation_angle)
 	   ) {
 		state |= 2;
@@ -523,6 +529,8 @@ bool follower_control_with_caclulations(const geometry_msgs::PointStamped &tr_in
 		tf_lp->transformPoint("/base_link", direction_tr_in_odom, direction_tr_in_base);
 
 		uint32_t follower_state = follower_control(tr_in_base, direction_tr_in_base, speed, ang_speed);
+		ROS_INFO("follower_state: %i", follower_state);
+
 		if (follower_state == 3) // 3: error is minimal and speed is not negative --> next state
 			return true;
 		if ((follower_state & 1) == 0) { // 0 and 2:  negative speed --> rotate in place (recovery option, should not happen often)
@@ -588,29 +596,28 @@ void control_based_on_history() {
 	}
 	else if (state == STATE_FOLLOWING) {
 		// this state is sending GRABBER_PREPARE
-		bool advance_state = rotation_control_with_caclulations(history[sz - 1].odom_point, dir, speed, ang_speed);
+		bool advance_state = follower_control_with_caclulations(history[sz - 1].odom_point, dir, speed, ang_speed);
 		if (advance_state && !grabber_at_home) {
 			state = STATE_PERFORMING_ACTION;
 			ROS_INFO("following correctly, state: following --> performing_action");
-			// TODO send grabber grab
 		}
 	}
 	else if (state == STATE_PERFORMING_ACTION) {
 		// this state is sending GRABBER_GRAB
-		rotation_control_with_caclulations(history[sz - 1].odom_point, dir, speed, ang_speed);
+		follower_control_with_caclulations(history[sz - 1].odom_point, dir, speed, ang_speed);
 		if (grabber_at_home) {
 			state = STATE_LEAVING;
 		}
 	}
 	else if (state == STATE_LEAVING) {
-		bool advance_state = rotation_control_with_caclulations(history[sz - 1].odom_point, dir, speed, ang_speed);
+		bool advance_state = follower_control_with_caclulations(history[sz - 1].odom_point, dir, speed, ang_speed);
 		if (advance_state) {
 			state = STATE_FINISHED;
 			ROS_INFO("disappeared correctly, state: leaving -> finished");
 		}
 	}
 	else if (state == STATE_STORNO) {
-		bool advance_state = rotation_control_with_caclulations(history[sz - 1].odom_point, dir, speed, ang_speed);
+		bool advance_state = follower_control_with_caclulations(history[sz - 1].odom_point, dir, speed, ang_speed);
 		if (advance_state) {
 			state = STATE_CANCELLED;
 			ROS_INFO("disappeared correctly, state: storno -> cancel");
@@ -907,7 +914,12 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 			state = STATE_ROTATING;
 		}
 	}
-	if ((state == STATE_ROTATING) || (state == STATE_FOLLOWING)) {
+	if (
+			(state == STATE_ROTATING) ||
+			(state == STATE_FOLLOWING) ||
+			(state == STATE_PERFORMING_ACTION) ||
+			(state == STATE_LEAVING)
+			) {
 		if (valid_history()) {
 			control_based_on_history();
 		}
@@ -1002,7 +1014,7 @@ int main(int argc, char **argv) {
 	// marker init
 	marker_p  = nh.advertise<visualization_msgs::Marker>("twitter_marker", 10);
 	cmd_vel_p = nh.advertise<geometry_msgs::Twist>("twitter/output/cmd_vel", 1);
-	grabber_p   = nh.advertise<std_msgs::UInt32>("twitter/output/grabber", 10);
+	grabber_p   = nh.advertise<std_msgs::UInt32>("twitter/output/grabber_action", 10);
 
 	ros::Publisher polygon_p = nh.advertise<geometry_msgs::PolygonStamped>("twitter/output/polygon", 1);
 	ros::Publisher state_p   = nh.advertise<std_msgs::UInt32>("twitter/output/state", 1);
@@ -1014,7 +1026,7 @@ int main(int argc, char **argv) {
 	//ros::Subscriber odom_s = nh.subscribe("twitter/input/odom", 1000, odom_callback);
 	ros::Subscriber laser_s = nh.subscribe("twitter/input/scan", 10, laser_callback);
 	ros::Subscriber enable_s = nh.subscribe("twitter/input/enable", 40, enable_callback);
-	ros::Subscriber grabber_s = nh.subscribe("twitter/input/grabber", 40, grabber_callback);
+	ros::Subscriber grabber_s = nh.subscribe("twitter/input/grabber_at_home", 40, grabber_callback);
 
 	ros::Rate loop_rate(30); // in Hz
 
@@ -1047,8 +1059,9 @@ int main(int argc, char **argv) {
 		nh.getParam("twitter/control_yaw_speed_coef", param_control_yaw_speed_coef);
 		nh.getParam("twitter/manipulation_angle", param_manipulation_angle);
 
-		nh.getParam("twitter/x_offset", param_x_offset);
-		nh.getParam("twitter/y_offset", param_y_offset);
+		nh.getParam("twitter/x_offset"        , param_x_offset        );
+		nh.getParam("twitter/y_offset"        , param_y_offset        );
+		nh.getParam("twitter/y_offset_leaving", param_y_offset_leaving);
 
 		nh.getParam("twitter/x_error_to_x_speed_coef",     param_x_error_to_x_speed_coef    );
 		nh.getParam("twitter/x_error_to_yaw_speed_coef",   param_x_error_to_yaw_speed_coef  );
@@ -1057,6 +1070,8 @@ int main(int argc, char **argv) {
 		nh.getParam("twitter/yaw_error_to_x_speed_coef",   param_yaw_error_to_x_speed_coef  );
 		nh.getParam("twitter/yaw_error_to_yaw_speed_coef", param_yaw_error_to_yaw_speed_coef);
 		nh.getParam("twitter/max_xy_error_yaw_mod",        param_max_xy_error_yaw_mod       );
+
+		nh.getParam("twitter/allowed_locked_error", param_allowed_locked_error);
 
 		std_msgs::UInt32 state_msg;
 		state_msg.data = state;
@@ -1068,7 +1083,7 @@ int main(int argc, char **argv) {
 			grabber_msg.data = GRABBER_PREPARE;
 		if (state == STATE_PERFORMING_ACTION)
 			grabber_msg.data = GRABBER_GRAB;
-		state_p.publish(state_msg);
+		grabber_p.publish(grabber_msg);
 
 		transporter_polygon.header.stamp = ros::Time::now();
 		polygon_p.publish(transporter_polygon);

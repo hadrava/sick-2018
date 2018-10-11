@@ -2,6 +2,7 @@
 	<node pkg="fortnight" type="twitter" name="twitter" output="screen"> <!-- name: topic name, type: binary name, pkg: package name -->
 		<remap from="twitter/input/odom" to="/odom" />
 		<remap from="twitter/input/scan" to="/scan" />
+		<remap from="twitter/output/grabber_action" to="/grabber/input/action" />
 		<remap from="twitter/output/cmd_vel" to="cmd_vel_mux/input/twitter" />
                 <rosparam>
                         transporter_polygon: [
@@ -33,6 +34,7 @@
 
                         x_offset: 0
                         y_offset: -0.38
+                        y_offset_leaving: -0.6
 
                         x_error_to_x_speed_coef:     2
                         x_error_to_yaw_speed_coef:   5
@@ -41,6 +43,8 @@
                         yaw_error_to_x_speed_coef:   0
                         yaw_error_to_yaw_speed_coef: 2
                         max_xy_error_yaw_mod:        10
+
+                        allowed_locked_error: 0.02
                 </rosparam>
 	</node>
 </launch>
