@@ -63,7 +63,6 @@ float param_manipulation_angle; // 15 degrees = cca 0.25
 void marker(uint32_t marker_id, const geometry_msgs::PoseStamped &pose_stamped, double length = 1.0, bool color = false);
 double point_yaw(double x, double y);
 
-
 bool valid_history() {
 	if (history.size() < param_speed_avg_size)
 		return false;
@@ -317,6 +316,78 @@ double point_yaw(double x, double y) {
 	return yaw;
 }
 
+tf::Quaternion orientation_of_speed(const tf::Quaternion &ang_speed, const geometry_msgs::PoseStamped &dir_a, const geometry_msgs::PoseStamped &dir_b, const ros::Time stamp, double offset = 0) {
+	geometry_msgs::PointStamped pta, ptb;
+	pta.header = dir_a.header;
+	pta.point = dir_a.pose.position;
+	ptb.header = dir_b.header;
+	ptb.point = dir_b.pose.position;
+	geometry_msgs::PoseStamped temp_dir = pose_from_two_points(pta, ptb);
+
+	tf::Quaternion ori(
+			temp_dir.pose.orientation.x,
+			temp_dir.pose.orientation.y,
+			temp_dir.pose.orientation.z,
+			temp_dir.pose.orientation.w
+			);
+	ros::Duration ori_dur = stamp - temp_dir.header.stamp;
+	return ori * tf_quat_angle_multiply(ang_speed, ori_dur.toSec());
+}
+
+bool rotation_control(const geometry_msgs::PointStamped &tr_in_base, const geometry_msgs::PointStamped &next_tr_in_base) {
+	bool we_are_locked_on = false;
+
+	double yaw_ideal = point_yaw(0, -1);
+	double yaw_tr = point_yaw(tr_in_base.point.x, tr_in_base.point.y);
+	double yaw_next_tr = point_yaw(next_tr_in_base.point.x, next_tr_in_base.point.y);
+
+	double diff_ri = yaw_tr - yaw_ideal;
+	if (diff_ri > M_PI)
+		diff_ri -= 2 * M_PI;
+	if (diff_ri < - M_PI)
+		diff_ri += 2 * M_PI;
+	if ((diff_ri < param_manipulation_angle) && (diff_ri > -param_manipulation_angle)) {
+		we_are_locked_on = true;
+	}
+
+	double diff_nc = yaw_next_tr - yaw_tr;
+	if (diff_nc > M_PI)
+		diff_nc -= 2 * M_PI;
+	if (diff_nc < - M_PI)
+		diff_nc += 2 * M_PI;
+
+	ROS_INFO("real ideal %f %f diff %f", yaw_tr, yaw_ideal, diff_ri);
+	ROS_INFO("next curr %f %f diff %f", yaw_next_tr, yaw_tr, diff_nc);
+
+	geometry_msgs::Twist cmd_vel_m;
+	cmd_vel_m.linear.x = 0;
+	cmd_vel_m.angular.z = diff_nc * LASER_HZ + param_control_yaw_speed_coef * diff_ri;
+	if (cmd_vel_m.angular.z < 0)
+		cmd_vel_m.angular.z -= param_min_ang_speed;
+	else
+		cmd_vel_m.angular.z += param_min_ang_speed;
+	if (cmd_vel_m.angular.z < -param_max_ang_speed)
+		cmd_vel_m.angular.z = -param_max_ang_speed;
+	if (cmd_vel_m.angular.z > param_max_ang_speed)
+		cmd_vel_m.angular.z = param_max_ang_speed;
+
+	ROS_INFO("speed %f rotation: %f, locked on: %i", cmd_vel_m.linear.x, cmd_vel_m.angular.z, (int) we_are_locked_on);
+	cmd_vel_p.publish(cmd_vel_m);
+
+	return we_are_locked_on;
+}
+
+bool transporter_passes_by(const tf::Quaternion &transporter_vector, const geometry_msgs::Point &our_position, const geometry_msgs::Point &transporter_position) {
+	tf::Quaternion our_vector(
+			our_position.x - transporter_position.x,
+			our_position.y - transporter_position.y,
+			our_position.z - transporter_position.z,
+			0
+			);
+	double dot = transporter_vector.dot(our_vector);
+	return dot < 0;
+}
+
 void control_based_on_history() {
 	int sz = history.size();
 	ROS_INFO("c_b_o_h %i", sz);
@@ -345,91 +416,62 @@ void control_based_on_history() {
 	}
 
 
-	double speed = 0.1;
+	double speed = 0.1; //TODO
 
-	geometry_msgs::PointStamped pta, ptb;
-	pta.header = dir[0].header;
-	pta.point = dir[0].pose.position;
-	ptb.header = dir[1].header;
-	ptb.point = dir[1].pose.position;
-	geometry_msgs::PoseStamped temp_dir = pose_from_two_points(pta, ptb);
 
-	tf::Quaternion ori(
-			temp_dir.pose.orientation.x,
-			temp_dir.pose.orientation.y,
-			temp_dir.pose.orientation.z,
-			temp_dir.pose.orientation.w
-			);
-	ros::Duration ori_dur = history[sz - 1].stamp - temp_dir.header.stamp;
-	ori = ori * tf_quat_angle_multiply(ang_speed, ori_dur.toSec());
-
+	// Display speed marker
 	geometry_msgs::PoseStamped pt;
 	pt.header.frame_id = "/odom";
 	pt.header.stamp = history[sz - 1].stamp;
 	pt.pose.position = history[sz - 1].odom_point.point;
-	quaternionTFToMsg(ori, pt.pose.orientation);
+	quaternionTFToMsg(orientation_of_speed(ang_speed, dir[0], dir[1], history[sz - 1].stamp), pt.pose.orientation);
 	marker(4, pt, speed, true);
 
 
-
+	// Real Control
 	if (state == STATE_ROTATING) {
-		geometry_msgs::PointStamped tr_in_base;
-		geometry_msgs::PointStamped next_tr_in_base;
+		bool we_are_locked_on;
 		geometry_msgs::PointStamped tr_in_odom;
-		geometry_msgs::PointStamped next_tr_in_odom;
-
+		geometry_msgs::PointStamped tr_in_base;
 		tr_in_odom = history[sz - 1].odom_point;
 
-		tf::Quaternion nori(
-				temp_dir.pose.orientation.x,
-				temp_dir.pose.orientation.y,
-				temp_dir.pose.orientation.z,
-				temp_dir.pose.orientation.w
-				);
-		nori = nori * tf_quat_angle_multiply(ang_speed, ori_dur.toSec() + 1.0 / (LASER_HZ * 2));
-
+		geometry_msgs::PointStamped next_tr_in_odom;
+		geometry_msgs::PointStamped next_tr_in_base;
 		next_tr_in_odom = history[sz - 1].odom_point;
+		tf::Quaternion nori = orientation_of_speed(ang_speed, dir[0], dir[1], history[sz - 1].stamp, 1.0 / (LASER_HZ * 2));
 		tf::Quaternion mov = orientation_to_vector(nori, speed / (LASER_HZ * 2));
 		next_tr_in_odom.point.x += mov.x();
 		next_tr_in_odom.point.y += mov.y();
+
+		geometry_msgs::PointStamped we_in_base;
+		geometry_msgs::PointStamped we_in_odom;
+		we_in_base.header = history[sz - 1].odom_point.header;
+		we_in_base.header.frame_id = "/base_link";
+		we_in_base.point.x = 0;
+		we_in_base.point.y = 0;
+		we_in_base.point.z = 0;
+
 		try {
-			tf_lp->waitForTransform("/odom", "/base_link", pt.header.stamp, ros::Duration(0.1));
+			tf_lp->waitForTransform("/odom", "/base_link", tr_in_odom.header.stamp, ros::Duration(0.1));
 			tf_lp->transformPoint("/base_link", tr_in_odom, tr_in_base);
 			tf_lp->transformPoint("/base_link", next_tr_in_odom, next_tr_in_base);
+			tf_lp->transformPoint("/odom", we_in_base, we_in_odom);
 
-			double yaw_ideal = point_yaw(0, -1);
-			double yaw_tr = point_yaw(tr_in_base.point.x, tr_in_base.point.y);
-			double yaw_next_tr = point_yaw(next_tr_in_base.point.x, next_tr_in_base.point.y);
-
-			double diff_ri = yaw_tr - yaw_ideal;
-			if (diff_ri > M_PI)
-				diff_ri -= 2 * M_PI;
-			double diff_nc = yaw_next_tr - yaw_tr;
-			if (diff_nc > M_PI)
-				diff_nc -= 2 * M_PI;
-
-			ROS_INFO("real ideal %f %f diff %f", yaw_tr, yaw_ideal, diff_ri);
-			ROS_INFO("next curr %f %f diff %f", yaw_next_tr, yaw_tr, diff_nc);
-
-			geometry_msgs::Twist cmd_vel_m;
-			cmd_vel_m.linear.x = 0;
-			cmd_vel_m.angular.z = diff_nc * LASER_HZ + param_control_yaw_speed_coef * diff_ri;
-			if (cmd_vel_m.angular.z < 0)
-				cmd_vel_m.angular.z -= param_min_ang_speed;
-			else
-				cmd_vel_m.angular.z += param_min_ang_speed;
-			if (cmd_vel_m.angular.z < -param_max_ang_speed)
-				cmd_vel_m.angular.z = -param_max_ang_speed;
-			if (cmd_vel_m.angular.z > param_max_ang_speed)
-				cmd_vel_m.angular.z = param_max_ang_speed;
-
-			ROS_INFO("speed %f rotation: %f", cmd_vel_m.linear.x, cmd_vel_m.angular.z);
-			cmd_vel_p.publish(cmd_vel_m);
+			we_are_locked_on = rotation_control(tr_in_base, next_tr_in_base);
 		}
 		catch (tf::TransformException &ex) {
 			ROS_ERROR("Failure %s\n", ex.what()); // Print exception which was caught
 		}
+
+		if (we_are_locked_on && transporter_passes_by(mov, we_in_odom.point, history[sz - 1].odom_point.point)) {
+			//state = STATE_FOLLOWING;
+			ROS_INFO("transporter_pass, state -> following");
+		}
 	}
+	else if (state == STATE_FOLLOWING) {
+	}
+
+
 
 	/*
 	if (history.size() >= 3) {

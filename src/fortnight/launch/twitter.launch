@@ -34,7 +34,7 @@
                         y_offset: 0.3
                         control_speed_coef: 0.1
 
-                        manipulation_angle: 0.25
+                        manipulation_angle: 0.08
                 </rosparam>
 	</node>
 </launch>
