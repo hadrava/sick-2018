@@ -33,7 +33,7 @@
                         manipulation_angle:     0.08
 
                         x_offset: 0
-                        y_offset: -0.38
+                        y_offset: -0.36
                         y_offset_leaving: -0.6
 
                         x_error_to_x_speed_coef:     2
@@ -44,7 +44,7 @@
                         yaw_error_to_yaw_speed_coef: 2
                         max_xy_error_yaw_mod:        10
 
-                        allowed_locked_error: 0.02
+                        allowed_locked_error: 0.005
                 </rosparam>
 	</node>
 </launch>
