@@ -22,6 +22,7 @@
 
 ros::Publisher marker_p;
 ros::Publisher cmd_vel_p;
+ros::Publisher grabber_p;
 tf::TransformListener *tf_lp;
 geometry_msgs::PolygonStamped transporter_polygon;
 
@@ -40,9 +41,6 @@ std::vector<struct transporter_observation> history;
 
 
 float param_transporter_radius; // radius of transporter base, documentation says: 0.1755
-float param_x_offset; // x offset maintained during following
-float param_y_offset; // y offset maintained during following should be at least radius of robot + radius of transporter
-float param_control_speed_coef; // P coefficient of error in P regulator of forward speed
 float param_control_yaw_speed_coef; // P coefficient of error in P regulator of turning speed
 
 int param_detect_avg_size; // from how many measurements we should compute the average (20)
@@ -57,6 +55,17 @@ float param_speed_avg_size; // number of samples to calculate speed (10)
 float param_max_ang_speed; // robot maximal angular speed (1.7)
 float param_min_ang_speed; // robot maximal angular speed offset
 float param_manipulation_angle; // 15 degrees = cca 0.25
+
+float param_x_offset; // x offset maintained during following
+float param_y_offset; // y offset maintained during following should be at least radius of robot + radius of transporter
+
+float param_x_error_to_x_speed_coef;
+float param_x_error_to_yaw_speed_coef;
+float param_y_error_to_x_speed_coef;
+float param_y_error_to_yaw_speed_coef;
+float param_yaw_error_to_x_speed_coef;
+float param_yaw_error_to_yaw_speed_coef;
+float param_max_xy_error_yaw_mod; // limit on how much can be yaw modified by x and y errors
 #define LASER_HZ 15
 
 
@@ -183,8 +192,20 @@ void enable_callback(const std_msgs::Bool::ConstPtr &msg) {
 			state = STATE_WAIT_FOR_OBJECT;
 	}
 	else {
-		if (state == STATE_FOLLOWING)
+		if ((state == STATE_START) || (state == STATE_WAIT_FOR_OBJECT) || (state == STATE_ROTATING)) {
+			state = STATE_CANCELLED;
+		}
+		else if (state == STATE_FOLLOWING) {
 			state = STATE_STORNO;
+		}
+	}
+}
+
+void grabber_callback(const std_msgs::Bool::ConstPtr &msg) { // grabber is at home
+	if (msg->data) {
+		if (state == STATE_PERFORMING_ACTION) {
+			state = STATE_LEAVING;
+		}
 	}
 }
 
@@ -388,6 +409,49 @@ bool transporter_passes_by(const tf::Quaternion &transporter_vector, const geome
 	return dot < 0;
 }
 
+void follower_control(const geometry_msgs::PointStamped &tr_in_base, const geometry_msgs::PointStamped &direction_tr_in_base, double transporter_speed, const tf::Quaternion &transporter_ang_speed) {
+	// circle properties
+	tf::Quaternion ang_direction = orientation_to_vector(transporter_ang_speed, 1.0);
+	double our_ang_speed = point_yaw(ang_direction.x(), ang_direction.y());
+	double y_ang_forward_speed = our_ang_speed * tr_in_base.point.y;;
+	double our_speed = transporter_speed + y_ang_forward_speed;
+
+	// errors:
+	double x_error = tr_in_base.point.x - param_x_offset;
+	double y_error = tr_in_base.point.y - param_y_offset;
+	double yaw_error = point_yaw(direction_tr_in_base.point.x - tr_in_base.point.x, direction_tr_in_base.point.y - tr_in_base.point.y);
+	if (yaw_error > M_PI)
+		yaw_error -= 2 * M_PI;
+	if (yaw_error < - M_PI)
+		yaw_error += 2 * M_PI;
+
+	ROS_INFO("errors: x: %f y: %f yaw: %f", x_error, y_error, yaw_error);
+
+	double error_x_speed = x_error * param_x_error_to_x_speed_coef + y_error * param_y_error_to_x_speed_coef + yaw_error * param_yaw_error_to_x_speed_coef;
+	double xy_error_yaw_speed = x_error * param_x_error_to_yaw_speed_coef + y_error * param_y_error_to_yaw_speed_coef;
+	if (xy_error_yaw_speed < - param_max_xy_error_yaw_mod)
+		xy_error_yaw_speed = - param_max_xy_error_yaw_mod;
+	if (xy_error_yaw_speed > param_max_xy_error_yaw_mod)
+		xy_error_yaw_speed = param_max_xy_error_yaw_mod;
+
+	double yaw_error_yaw_speed = yaw_error * param_yaw_error_to_yaw_speed_coef;
+
+	our_speed += error_x_speed;
+	our_ang_speed += xy_error_yaw_speed + yaw_error_yaw_speed;
+
+	geometry_msgs::Twist cmd_vel_m;
+	cmd_vel_m.linear.x = our_speed;
+	cmd_vel_m.angular.z = our_ang_speed;
+
+	if (cmd_vel_m.angular.z < -param_max_ang_speed)
+		cmd_vel_m.angular.z = -param_max_ang_speed;
+	if (cmd_vel_m.angular.z > param_max_ang_speed)
+		cmd_vel_m.angular.z = param_max_ang_speed;
+
+	ROS_INFO("following speed %f (tr: %f, y*ang: %f) rotation: %f", our_speed, transporter_speed, y_ang_forward_speed, our_ang_speed);
+	cmd_vel_p.publish(cmd_vel_m);
+}
+
 void control_based_on_history() {
 	int sz = history.size();
 	ROS_INFO("c_b_o_h %i", sz);
@@ -417,6 +481,7 @@ void control_based_on_history() {
 
 
 	double speed = 0.1; //TODO
+	tf::Quaternion transporter_orientation = orientation_of_speed(ang_speed, dir[0], dir[1], history[sz - 1].stamp);
 
 
 	// Display speed marker
@@ -424,7 +489,7 @@ void control_based_on_history() {
 	pt.header.frame_id = "/odom";
 	pt.header.stamp = history[sz - 1].stamp;
 	pt.pose.position = history[sz - 1].odom_point.point;
-	quaternionTFToMsg(orientation_of_speed(ang_speed, dir[0], dir[1], history[sz - 1].stamp), pt.pose.orientation);
+	quaternionTFToMsg(transporter_orientation, pt.pose.orientation);
 	marker(4, pt, speed, true);
 
 
@@ -464,11 +529,37 @@ void control_based_on_history() {
 		}
 
 		if (we_are_locked_on && transporter_passes_by(mov, we_in_odom.point, history[sz - 1].odom_point.point)) {
-			//state = STATE_FOLLOWING;
+			state = STATE_FOLLOWING;
 			ROS_INFO("transporter_pass, state -> following");
 		}
 	}
-	else if (state == STATE_FOLLOWING) {
+	else if (
+			(state == STATE_FOLLOWING) ||
+			(state == STATE_PERFORMING_ACTION) ||
+			(state == STATE_LEAVING)
+		) {
+		geometry_msgs::PointStamped tr_in_odom;
+		geometry_msgs::PointStamped tr_in_base;
+		tr_in_odom = history[sz - 1].odom_point;
+
+		geometry_msgs::PointStamped direction_tr_in_odom;
+		geometry_msgs::PointStamped direction_tr_in_base;
+		direction_tr_in_odom = history[sz - 1].odom_point;
+		tf::Quaternion nori = orientation_of_speed(ang_speed, dir[0], dir[1], history[sz - 1].stamp, 0.0);
+		tf::Quaternion mov = orientation_to_vector(nori, speed / (LASER_HZ * 2));
+		direction_tr_in_odom.point.x += mov.x();
+		direction_tr_in_odom.point.y += mov.y();
+
+		try {
+			tf_lp->waitForTransform("/odom", "/base_link", tr_in_odom.header.stamp, ros::Duration(0.1));
+			tf_lp->transformPoint("/base_link", tr_in_odom, tr_in_base);
+			tf_lp->transformPoint("/base_link", direction_tr_in_odom, direction_tr_in_base);
+
+			follower_control(tr_in_base, direction_tr_in_base, speed, ang_speed);
+		}
+		catch (tf::TransformException &ex) {
+			ROS_ERROR("Failure %s\n", ex.what()); // Print exception which was caught
+		}
 	}
 
 
@@ -854,8 +945,9 @@ int main(int argc, char **argv) {
 
 	state = STATE_DISABLED;
 	// marker init
-	marker_p  = nh.advertise<visualization_msgs::Marker>("twitter_marker", 1);
+	marker_p  = nh.advertise<visualization_msgs::Marker>("twitter_marker", 10);
 	cmd_vel_p = nh.advertise<geometry_msgs::Twist>("twitter/output/cmd_vel", 1);
+	grabber_p   = nh.advertise<std_msgs::UInt32>("twitter/output/grabber", 10);
 
 	ros::Publisher polygon_p = nh.advertise<geometry_msgs::PolygonStamped>("twitter/output/polygon", 1);
 	ros::Publisher state_p   = nh.advertise<std_msgs::UInt32>("twitter/output/state", 1);
@@ -866,7 +958,8 @@ int main(int argc, char **argv) {
 
 	//ros::Subscriber odom_s = nh.subscribe("twitter/input/odom", 1000, odom_callback);
 	ros::Subscriber laser_s = nh.subscribe("twitter/input/scan", 10, laser_callback);
-	ros::Subscriber enable_s = nh.subscribe("twitter/input/enable", 1, enable_callback);
+	ros::Subscriber enable_s = nh.subscribe("twitter/input/enable", 40, enable_callback);
+	ros::Subscriber grabber_s = nh.subscribe("twitter/input/grabber", 40, grabber_callback);
 
 	ros::Rate loop_rate(30); // in Hz
 
@@ -882,28 +975,33 @@ int main(int argc, char **argv) {
 	}
 
 	while (ros::ok()) {
-		nh.getParam("twitter/transporter_radius", param_transporter_radius);
-		nh.getParam("twitter/x_offset", param_x_offset);
-		nh.getParam("twitter/y_offset", param_y_offset);
-		nh.getParam("twitter/control_speed_coef", param_control_speed_coef);
-		nh.getParam("twitter/control_yaw_speed_coef", param_control_yaw_speed_coef);
+		nh.getParam("twitter/transporter_radius",     param_transporter_radius    );
 
-		nh.getParam("twitter/detect_avg_size", param_detect_avg_size);
-		nh.getParam("twitter/detect_avg_distance", param_detect_avg_distance);
+		nh.getParam("twitter/detect_avg_size",             param_detect_avg_size            );
+		nh.getParam("twitter/detect_avg_distance",         param_detect_avg_distance        );
 		nh.getParam("twitter/detect_history_max_duration", param_detect_history_max_duration);
 
 		nh.getParam("twitter/minimal_transporter_speed", param_minimal_transporter_speed);
-		nh.getParam("twitter/use_fixed_angular_speed", param_use_fixed_angular_speed);
+		nh.getParam("twitter/use_fixed_angular_speed",   param_use_fixed_angular_speed  );
 		nh.getParam("twitter/transporter_angular_speed", param_transporter_angular_speed);
 
 		nh.getParam("twitter/speed_avg_size", param_speed_avg_size);
 
-		nh.getParam("twitter/max_ang_speed", param_max_ang_speed);
-		nh.getParam("twitter/min_ang_speed", param_min_ang_speed);
+		nh.getParam("twitter/max_ang_speed",      param_max_ang_speed     );
+		nh.getParam("twitter/min_ang_speed",      param_min_ang_speed     );
+		nh.getParam("twitter/control_yaw_speed_coef", param_control_yaw_speed_coef);
 		nh.getParam("twitter/manipulation_angle", param_manipulation_angle);
 
+		nh.getParam("twitter/x_offset", param_x_offset);
+		nh.getParam("twitter/y_offset", param_y_offset);
 
-
+		nh.getParam("twitter/x_error_to_x_speed_coef",     param_x_error_to_x_speed_coef    );
+		nh.getParam("twitter/x_error_to_yaw_speed_coef",   param_x_error_to_yaw_speed_coef  );
+		nh.getParam("twitter/y_error_to_x_speed_coef",     param_y_error_to_x_speed_coef    );
+		nh.getParam("twitter/y_error_to_yaw_speed_coef",   param_y_error_to_yaw_speed_coef  );
+		nh.getParam("twitter/yaw_error_to_x_speed_coef",   param_yaw_error_to_x_speed_coef  );
+		nh.getParam("twitter/yaw_error_to_yaw_speed_coef", param_yaw_error_to_yaw_speed_coef);
+		nh.getParam("twitter/max_xy_error_yaw_mod",        param_max_xy_error_yaw_mod       );
 
 		std_msgs::UInt32 state_msg;
 		state_msg.data = state;
