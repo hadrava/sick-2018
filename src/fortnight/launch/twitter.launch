@@ -49,10 +49,13 @@
                         allowed_locked_error:         0.005
                         allowed_locked_error_leaving: 0.1
 
-                        strict_follow_raidus_1: 1
-                        strict_follow_raidus_2: 1.5
-                        strict_follow_x_offset: -0.4
-                        strict_follow_y_offset: 0.4
+                        strict_follow_radius_1:              1
+                        strict_follow_radius_2:              1.5
+                        strict_follow_x_offset:              -0.4
+                        strict_follow_y_offset:              0.4
+                        strict_follower_forward_speed:       0.5
+                        strict_follower_y_to_yaw_speed_coef: 4
+
                 </rosparam>
 	</node>
 </launch>

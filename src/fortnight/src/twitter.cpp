@@ -71,10 +71,14 @@ float param_max_xy_error_yaw_mod; // limit on how much can be yaw modified by x 
 
 float param_allowed_locked_error; // 0.02 (2 cm)
 float param_allowed_locked_error_leaving; // set it so y_offset_leaving + this is larger than normal y_offset
-float param_strict_follow_raidus_1; // only normal follow mode inside this circle
-float param_strict_follow_raidus_2; // only strict follow mode outside this circle, mixed between
-float param_strict_follow_x_offset; // should be negative
+
+float param_strict_follow_radius_1; // only normal follow mode inside this circle
+float param_strict_follow_radius_2; // only strict follow mode outside this circle, mixed between
+float param_strict_follow_x_offset; // should be negative; may behave strangely, if tshis point is not inside radius_1
 float param_strict_follow_y_offset; // should be positive
+float param_strict_follower_forward_speed; // maximal forward speed during strict_following
+float param_strict_follower_y_to_yaw_speed_coef; // try same value as param_y_error_to_yaw_speed_coef
+
 #define LASER_HZ 15
 
 
@@ -456,6 +460,12 @@ bool rotation_control_with_caclulations(const geometry_msgs::PointStamped &tr_in
 	return false;
 }
 
+
+// mixing follower_control
+// object variables
+geometry_msgs::Twist normal_cmd_vel_m;
+geometry_msgs::Twist strict_cmd_vel_m;
+
 uint32_t normal_follower_control(const geometry_msgs::PointStamped &tr_in_base, const geometry_msgs::PointStamped &direction_tr_in_base, const geometry_msgs::PointStamped &strict_following_pt_in_base, double transporter_speed, const tf::Quaternion &transporter_ang_speed) {
 	// state depended settings:
 	double real_y_offset = param_y_offset;
@@ -495,16 +505,15 @@ uint32_t normal_follower_control(const geometry_msgs::PointStamped &tr_in_base, 
 	our_speed += error_x_speed;
 	our_ang_speed += xy_error_yaw_speed + yaw_error_yaw_speed;
 
-	geometry_msgs::Twist cmd_vel_m;
-	cmd_vel_m.linear.x = our_speed;
-	cmd_vel_m.angular.z = our_ang_speed;
+	normal_cmd_vel_m.linear.x = our_speed;
+	normal_cmd_vel_m.angular.z = our_ang_speed;
 
-	if (cmd_vel_m.angular.z < -param_max_ang_speed)
-		cmd_vel_m.angular.z = -param_max_ang_speed;
-	if (cmd_vel_m.angular.z > param_max_ang_speed)
-		cmd_vel_m.angular.z = param_max_ang_speed;
+	if (normal_cmd_vel_m.angular.z < - param_max_ang_speed)
+		normal_cmd_vel_m.angular.z = - param_max_ang_speed;
+	if (normal_cmd_vel_m.angular.z > param_max_ang_speed)
+		normal_cmd_vel_m.angular.z = param_max_ang_speed;
 
-	ROS_INFO("following speed %f (tr: %f, y*ang: %f) rotation: %f", our_speed, transporter_speed, y_ang_forward_speed, our_ang_speed);
+	ROS_INFO("normal following speed %f (tr: %f, y*ang: %f) rotation: %f", our_speed, transporter_speed, y_ang_forward_speed, our_ang_speed);
 
 	uint32_t state = 0;
 	if (
@@ -515,19 +524,92 @@ uint32_t normal_follower_control(const geometry_msgs::PointStamped &tr_in_base, 
 		state |= 2;
 	}
 
-	if (cmd_vel_m.linear.x < 0) {
-		ROS_INFO("following speed negative, giving control to rotation");
+	if (normal_cmd_vel_m.linear.x < 0) {
+		ROS_INFO("normal following speed negative, giving control to rotation (or something similar)");
 		return state;
 	}
 	else {
-		cmd_vel_p.publish(cmd_vel_m);
 		state |= 1;
 		return state;
 	}
 }
 
+uint32_t strict_follower_control(const geometry_msgs::PointStamped &tr_in_base, const geometry_msgs::PointStamped &direction_tr_in_base, const geometry_msgs::PointStamped &strict_following_pt_in_base, double transporter_speed, const tf::Quaternion &transporter_ang_speed) {
+	if (strict_following_pt_in_base.point.x < 0) {
+		// transporter strict_following point is behind us, rotate in place
+		strict_cmd_vel_m.linear.x = 0;
+		if (strict_following_pt_in_base.point.y < 0) // point is on the right
+			strict_cmd_vel_m.angular.z = - param_max_ang_speed;
+		else // point is on the left
+			strict_cmd_vel_m.angular.z = param_max_ang_speed;
+	}
+	else {
+		double abs_y = abs(strict_following_pt_in_base.point.y);
+		strict_cmd_vel_m.linear.x = param_strict_follower_forward_speed * (1.0 - (abs_y / strict_following_pt_in_base.point.x));
+		// y > x --> negative --> 0
+		// x == y --> (1.0 - 1.0) = 0
+		// y = 0 --> 1 full speed
+
+		strict_cmd_vel_m.angular.z = param_strict_follower_y_to_yaw_speed_coef * strict_following_pt_in_base.point.y;
+	}
+
+	if (strict_cmd_vel_m.linear.x < 0.0)
+		strict_cmd_vel_m.linear.x = 0.0;
+	if (strict_cmd_vel_m.linear.x > param_strict_follower_forward_speed)
+		strict_cmd_vel_m.linear.x = param_strict_follower_forward_speed;
+
+	if (strict_cmd_vel_m.angular.z < - param_max_ang_speed)
+		strict_cmd_vel_m.angular.z = - param_max_ang_speed;
+	if (strict_cmd_vel_m.angular.z > param_max_ang_speed)
+		strict_cmd_vel_m.angular.z = param_max_ang_speed;
+
+	return 1;
+}
+
 uint32_t follower_control(const geometry_msgs::PointStamped &tr_in_base, const geometry_msgs::PointStamped &direction_tr_in_base, const geometry_msgs::PointStamped &strict_following_pt_in_base, double transporter_speed, const tf::Quaternion &transporter_ang_speed) {
-	normal_follower_control(tr_in_base, direction_tr_in_base, strict_following_pt_in_base, transporter_speed, transporter_ang_speed);
+	uint32_t normal = normal_follower_control(tr_in_base, direction_tr_in_base, strict_following_pt_in_base, transporter_speed, transporter_ang_speed);
+	uint32_t strict = strict_follower_control(tr_in_base, direction_tr_in_base, strict_following_pt_in_base, transporter_speed, transporter_ang_speed);
+	double distance_squared = tr_in_base.point.x * tr_in_base.point.x + tr_in_base.point.y * tr_in_base.point.y;
+	if (((strict & 1) == 0) || (distance_squared < param_strict_follow_radius_1 * param_strict_follow_radius_1)) {
+		// inside inner circle: normal only
+		if (normal & 1) {
+			cmd_vel_p.publish(normal_cmd_vel_m);
+		}
+		return normal;
+	}
+	else if ((strict & 1) && (normal & 1) && (distance_squared < param_strict_follow_radius_2 * param_strict_follow_radius_2)) {
+		// between circles: mix
+		geometry_msgs::Twist mixed_cmd_vel_m;
+
+		double d = sqrt(distance_squared);
+		double c = (d - param_strict_follow_radius_1) / (param_strict_follow_radius_2 - param_strict_follow_radius_1);
+		// d == r1 --> c = 0 (1 * normal, 0 * strict)
+		// d == r2 --> c = 1 (0 * normal, 1 * strict)
+
+		mixed_cmd_vel_m.linear.x  = (1 - c) * normal_cmd_vel_m.linear.x  + c * strict_cmd_vel_m.linear.x;
+		mixed_cmd_vel_m.angular.z = (1 - c) * normal_cmd_vel_m.angular.z + c * strict_cmd_vel_m.angular.z;
+
+		if (mixed_cmd_vel_m.angular.z < - param_max_ang_speed)
+			mixed_cmd_vel_m.angular.z = - param_max_ang_speed;
+		if (mixed_cmd_vel_m.angular.z > param_max_ang_speed)
+			mixed_cmd_vel_m.angular.z = param_max_ang_speed;
+
+		if (mixed_cmd_vel_m.linear.x < 0) {
+			ROS_INFO("mixed following speed negative, giving control to rotation (or something similar)");
+			return 0;
+		}
+		else {
+			cmd_vel_p.publish(mixed_cmd_vel_m);
+			return 1;
+		}
+	}
+	else {
+		// outside of larger circle: strict only
+		if (strict & 1) {
+			cmd_vel_p.publish(strict_cmd_vel_m);
+		}
+		return strict;
+	}
 }
 
 bool follower_control_with_caclulations(const geometry_msgs::PointStamped &tr_in_odom, const geometry_msgs::PoseStamped *dir, double speed, const tf::Quaternion &ang_speed) { // returns true if we should change our state to following
@@ -1101,10 +1183,14 @@ int main(int argc, char **argv) {
 
 		nh.getParam("twitter/allowed_locked_error",         param_allowed_locked_error        );
 		nh.getParam("twitter/allowed_locked_error_leaving", param_allowed_locked_error_leaving);
-		nh.getParam("twitter/strict_follow_raidus_1",       param_strict_follow_raidus_1      );
-		nh.getParam("twitter/strict_follow_raidus_2",       param_strict_follow_raidus_2      );
-		nh.getParam("twitter/strict_follow_x_offset",       param_strict_follow_x_offset      );
-		nh.getParam("twitter/strict_follow_y_offset",       param_strict_follow_y_offset      );
+
+		nh.getParam("twitter/strict_follow_radius_1",              param_strict_follow_radius_1             );
+		nh.getParam("twitter/strict_follow_radius_2",              param_strict_follow_radius_2             );
+		nh.getParam("twitter/strict_follow_x_offset",              param_strict_follow_x_offset             );
+		nh.getParam("twitter/strict_follow_y_offset",              param_strict_follow_y_offset             );
+		nh.getParam("twitter/strict_follower_forward_speed",       param_strict_follower_forward_speed      );
+		nh.getParam("twitter/strict_follower_y_to_yaw_speed_coef", param_strict_follower_y_to_yaw_speed_coef);
+
 
 		std_msgs::UInt32 state_msg;
 		state_msg.data = state;
