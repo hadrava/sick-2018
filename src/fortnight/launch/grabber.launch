@@ -1,6 +1,5 @@
 <launch>
 	<node pkg="fortnight" type="grabber" name="grabber" output="screen"> <!-- name: topic name, type: binary name, pkg: package name -->
-		<remap from="grabber/output/at_home" to="/twitter/input/grabber_at_home" />
                 <rosparam>
                         device:              "/dev/arduino"
                         alternative_device1: "/dev/arduino0"

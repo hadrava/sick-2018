@@ -13,8 +13,10 @@
 
 ros::NodeHandle *nh_p;
 ros::Publisher at_home_p;
+ros::Publisher start_button_p;
 
 bool at_home = true;
+bool start_button = false;
 
 int fd = -1;
 
@@ -55,6 +57,8 @@ void parse_data(uint8_t *buff) {
 		return;
 	}
 	at_home = (buff[1] & 0xF0) == 0xA0;
+	start_button = (buff[1] & 0x08) == 0x08;
+
 	ROS_INFO("Valid packet: 0x%02x 0x%02x 0x%02x", buff[0], buff[1], buff[2]);
 }
 
@@ -170,6 +174,7 @@ int main(int argc, char **argv) {
 
 
 	at_home_p = nh.advertise<std_msgs::Bool>("grabber/output/at_home", 10);
+	start_button_p = nh.advertise<std_msgs::Bool>("grabber/output/start_button", 10);
 	ros::Subscriber action_s = nh.subscribe("grabber/input/action", 10, action_callback);
 
 	ros::Rate loop_rate(30); // in Hz
@@ -184,6 +189,10 @@ int main(int argc, char **argv) {
 		std_msgs::Bool at_home_msg;
 		at_home_msg.data = at_home;
 		at_home_p.publish(at_home_msg);
+
+		std_msgs::Bool start_button_msg;
+		start_button_msg.data = start_button;
+		start_button_p.publish(start_button_msg);
 
 		ros::spinOnce();
 		loop_rate.sleep();

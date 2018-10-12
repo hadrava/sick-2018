@@ -2,6 +2,8 @@
 	<node pkg="fortnight" type="twitter" name="twitter" output="screen"> <!-- name: topic name, type: binary name, pkg: package name -->
 		<remap from="twitter/input/odom" to="/odom" />
 		<remap from="twitter/input/scan" to="/scan" />
+
+		<remap from="twitter/input/grabber_at_home" to="/grabber/output/at_home" />
 		<remap from="twitter/output/grabber_action" to="/grabber/input/action" />
 		<remap from="twitter/output/cmd_vel" to="cmd_vel_mux/input/twitter" />
                 <rosparam>
