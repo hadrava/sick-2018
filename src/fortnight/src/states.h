@@ -14,4 +14,9 @@
 #define STATE_CANCELLED          8 // no action
 #define STATE_FINISHED           9 // no action
 
+
+#define COMMAND_DISABLE      0 // will slowly leave transporter and end, if it fails, feel free to perform reset
+#define COMMAND_ENABLE       1 // sending during whole action
+#define COMMAND_RESET        2 // always resets to STATE_DISABLED
+
 #endif

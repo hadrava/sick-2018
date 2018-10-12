@@ -190,12 +190,15 @@ double odom_log_y[64];
 int odom_log_b = 0;
 int odom_log_e = 0;
 
-void enable_callback(const std_msgs::Bool::ConstPtr &msg) {
-	if (msg->data) {
-		if ((state == STATE_DISABLED) || (state == STATE_CANCELLED) || (state == STATE_FINISHED))
-			state = STATE_WAIT_FOR_OBJECT;
+void enable_callback(const std_msgs::UInt32::ConstPtr &msg) {
+	if (msg->data == COMMAND_RESET) {
+		state = STATE_DISABLED;
 	}
-	else {
+	else if (msg->data == COMMAND_ENABLE) {
+		if (state == STATE_DISABLED)
+			state = STATE_START;
+	}
+	else { // COMMAND DISABLE
 		if ((state == STATE_START) || (state == STATE_WAIT_FOR_OBJECT) || (state == STATE_ROTATING)) {
 			state = STATE_CANCELLED;
 		}

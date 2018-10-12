@@ -1,1 +1,1 @@
-rostopic pub /twitter/input/enable std_msgs/Bool true
+rostopic pub /twitter/input/enable std_msgs/UInt32 1
