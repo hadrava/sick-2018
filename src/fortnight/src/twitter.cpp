@@ -513,7 +513,10 @@ uint32_t normal_follower_control(const geometry_msgs::PointStamped &tr_in_base, 
 	if (normal_cmd_vel_m.angular.z > param_max_ang_speed)
 		normal_cmd_vel_m.angular.z = param_max_ang_speed;
 
-	ROS_INFO("normal following speed %f (tr: %f, y*ang: %f) rotation: %f", our_speed, transporter_speed, y_ang_forward_speed, our_ang_speed);
+	ROS_INFO("speed type\tx_error\ty_error\tyaw_error");
+	ROS_INFO("linear\t%f\t%f\t%f", x_error * param_x_error_to_x_speed_coef, y_error * param_y_error_to_x_speed_coef, yaw_error * param_yaw_error_to_x_speed_coef);
+	ROS_INFO("angular\t%f\t%f\t%f", x_error * param_x_error_to_yaw_speed_coef, y_error * param_y_error_to_yaw_speed_coef, yaw_error * param_yaw_error_to_yaw_speed_coef);
+	ROS_INFO("normal following (almost final) speed %f (tr: %f, y*ang: %f) rotation: %f (before limitation)", our_speed, transporter_speed, y_ang_forward_speed, our_ang_speed);
 
 	uint32_t state = 0;
 	if (
@@ -535,6 +538,7 @@ uint32_t normal_follower_control(const geometry_msgs::PointStamped &tr_in_base, 
 }
 
 uint32_t strict_follower_control(const geometry_msgs::PointStamped &tr_in_base, const geometry_msgs::PointStamped &direction_tr_in_base, const geometry_msgs::PointStamped &strict_following_pt_in_base, double transporter_speed, const tf::Quaternion &transporter_ang_speed) {
+	ROS_INFO("strict position: x: %f y: %f", strict_following_pt_in_base.point.x, strict_following_pt_in_base.point.y);
 	if (strict_following_pt_in_base.point.x < 0) {
 		// transporter strict_following point is behind us, rotate in place
 		strict_cmd_vel_m.linear.x = 0;
@@ -562,6 +566,8 @@ uint32_t strict_follower_control(const geometry_msgs::PointStamped &tr_in_base, 
 		strict_cmd_vel_m.angular.z = - param_max_ang_speed;
 	if (strict_cmd_vel_m.angular.z > param_max_ang_speed)
 		strict_cmd_vel_m.angular.z = param_max_ang_speed;
+
+	ROS_INFO("strict following (almost final) speed: %f rotation: %f", strict_cmd_vel_m.linear.x, strict_cmd_vel_m.angular.z);
 
 	return 1;
 }
@@ -594,6 +600,7 @@ uint32_t follower_control(const geometry_msgs::PointStamped &tr_in_base, const g
 		if (mixed_cmd_vel_m.angular.z > param_max_ang_speed)
 			mixed_cmd_vel_m.angular.z = param_max_ang_speed;
 
+		ROS_INFO("mixing speeds: distance: %f coef: %f speed: %f rotation: %f", d, c, mixed_cmd_vel_m.linear.x, mixed_cmd_vel_m.angular.z);
 		if (mixed_cmd_vel_m.linear.x < 0) {
 			ROS_INFO("mixed following speed negative, giving control to rotation (or something similar)");
 			return 0;
