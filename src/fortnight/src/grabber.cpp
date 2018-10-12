@@ -56,7 +56,7 @@ void parse_data(uint8_t *buff) {
 		MY_ERROR("Accepted corrupted packet: 0x%02x 0x%02x 0x%02x", buff[0], buff[1], buff[2]);
 		return;
 	}
-	at_home = (buff[1] & 0xF0) == 0xA0;
+	at_home = (buff[1] & 0xF7) == 0xA0;
 	start_button = (buff[1] & 0x08) == 0x08;
 
 	ROS_INFO("Valid packet: 0x%02x 0x%02x 0x%02x", buff[0], buff[1], buff[2]);
