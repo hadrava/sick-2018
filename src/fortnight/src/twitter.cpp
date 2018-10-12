@@ -456,7 +456,7 @@ bool rotation_control_with_caclulations(const geometry_msgs::PointStamped &tr_in
 	return false;
 }
 
-uint32_t follower_control(const geometry_msgs::PointStamped &tr_in_base, const geometry_msgs::PointStamped &direction_tr_in_base, double transporter_speed, const tf::Quaternion &transporter_ang_speed) {
+uint32_t normal_follower_control(const geometry_msgs::PointStamped &tr_in_base, const geometry_msgs::PointStamped &direction_tr_in_base, const geometry_msgs::PointStamped &strict_following_pt_in_base, double transporter_speed, const tf::Quaternion &transporter_ang_speed) {
 	// state depended settings:
 	double real_y_offset = param_y_offset;
 	double real_allowed_locked_error = param_allowed_locked_error;
@@ -526,6 +526,10 @@ uint32_t follower_control(const geometry_msgs::PointStamped &tr_in_base, const g
 	}
 }
 
+uint32_t follower_control(const geometry_msgs::PointStamped &tr_in_base, const geometry_msgs::PointStamped &direction_tr_in_base, const geometry_msgs::PointStamped &strict_following_pt_in_base, double transporter_speed, const tf::Quaternion &transporter_ang_speed) {
+	normal_follower_control(tr_in_base, direction_tr_in_base, strict_following_pt_in_base, transporter_speed, transporter_ang_speed);
+}
+
 bool follower_control_with_caclulations(const geometry_msgs::PointStamped &tr_in_odom, const geometry_msgs::PoseStamped *dir, double speed, const tf::Quaternion &ang_speed) { // returns true if we should change our state to following
 	geometry_msgs::PointStamped tr_in_base;
 
@@ -537,12 +541,22 @@ bool follower_control_with_caclulations(const geometry_msgs::PointStamped &tr_in
 	direction_tr_in_odom.point.x += mov.x();
 	direction_tr_in_odom.point.y += mov.y();
 
+	// following point for strict variant
+	geometry_msgs::PointStamped strict_following_pt_in_odom;
+	geometry_msgs::PointStamped strict_following_pt_in_base;
+	strict_following_pt_in_odom = tr_in_odom;
+	tf::Quaternion strict(param_strict_follow_x_offset, param_strict_follow_y_offset, 0, 0);
+	strict = nori * strict * nori.inverse();
+	strict_following_pt_in_odom.point.x += strict.x();
+	strict_following_pt_in_odom.point.y += strict.y();
+
 	try {
 		tf_lp->waitForTransform("/odom", "/base_link", tr_in_odom.header.stamp, ros::Duration(0.1));
 		tf_lp->transformPoint("/base_link", tr_in_odom, tr_in_base);
 		tf_lp->transformPoint("/base_link", direction_tr_in_odom, direction_tr_in_base);
+		tf_lp->transformPoint("/base_link", strict_following_pt_in_odom, strict_following_pt_in_base);
 
-		uint32_t follower_state = follower_control(tr_in_base, direction_tr_in_base, speed, ang_speed);
+		uint32_t follower_state = follower_control(tr_in_base, direction_tr_in_base, strict_following_pt_in_base, speed, ang_speed);
 		ROS_INFO("follower_state: %i", follower_state);
 
 		if (follower_state == 3) // 3: error is minimal and speed is not negative --> next state
