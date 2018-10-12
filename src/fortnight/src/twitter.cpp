@@ -70,6 +70,11 @@ float param_yaw_error_to_yaw_speed_coef;
 float param_max_xy_error_yaw_mod; // limit on how much can be yaw modified by x and y errors
 
 float param_allowed_locked_error; // 0.02 (2 cm)
+float param_allowed_locked_error_leaving; // set it so y_offset_leaving + this is larger than normal y_offset
+float param_strict_follow_raidus_1; // only normal follow mode inside this circle
+float param_strict_follow_raidus_2; // only strict follow mode outside this circle, mixed between
+float param_strict_follow_x_offset; // should be negative
+float param_strict_follow_y_offset; // should be positive
 #define LASER_HZ 15
 
 
@@ -452,6 +457,14 @@ bool rotation_control_with_caclulations(const geometry_msgs::PointStamped &tr_in
 }
 
 uint32_t follower_control(const geometry_msgs::PointStamped &tr_in_base, const geometry_msgs::PointStamped &direction_tr_in_base, double transporter_speed, const tf::Quaternion &transporter_ang_speed) {
+	// state depended settings:
+	double real_y_offset = param_y_offset;
+	double real_allowed_locked_error = param_allowed_locked_error;
+	if (state == STATE_LEAVING) {
+		real_y_offset = param_y_offset_leaving;
+		real_allowed_locked_error = param_allowed_locked_error_leaving;
+	}
+
 	// circle properties
 	tf::Quaternion ang_direction = orientation_to_vector(transporter_ang_speed, 1.0);
 	double our_ang_speed = point_yaw(ang_direction.x(), ang_direction.y());
@@ -460,9 +473,7 @@ uint32_t follower_control(const geometry_msgs::PointStamped &tr_in_base, const g
 
 	// errors:
 	double x_error = tr_in_base.point.x - param_x_offset;
-	double y_error = tr_in_base.point.y - param_y_offset;
-	if (state == STATE_LEAVING)
-		y_error = tr_in_base.point.y - param_y_offset_leaving;
+	double y_error = tr_in_base.point.y - real_y_offset;
 
 	double yaw_error = point_yaw(direction_tr_in_base.point.x - tr_in_base.point.x, direction_tr_in_base.point.y - tr_in_base.point.y);
 	if (yaw_error > M_PI)
@@ -497,8 +508,8 @@ uint32_t follower_control(const geometry_msgs::PointStamped &tr_in_base, const g
 
 	uint32_t state = 0;
 	if (
-			(x_error < param_allowed_locked_error) && (x_error > - param_allowed_locked_error) &&
-			(y_error < param_allowed_locked_error) && (y_error > - param_allowed_locked_error) &&
+			(x_error  < real_allowed_locked_error) && (x_error > - real_allowed_locked_error) &&
+			(y_error  < real_allowed_locked_error) && (y_error > - real_allowed_locked_error) &&
 			(yaw_error < param_manipulation_angle) && (y_error > - param_manipulation_angle)
 	   ) {
 		state |= 2;
@@ -1074,7 +1085,12 @@ int main(int argc, char **argv) {
 		nh.getParam("twitter/yaw_error_to_yaw_speed_coef", param_yaw_error_to_yaw_speed_coef);
 		nh.getParam("twitter/max_xy_error_yaw_mod",        param_max_xy_error_yaw_mod       );
 
-		nh.getParam("twitter/allowed_locked_error", param_allowed_locked_error);
+		nh.getParam("twitter/allowed_locked_error",         param_allowed_locked_error        );
+		nh.getParam("twitter/allowed_locked_error_leaving", param_allowed_locked_error_leaving);
+		nh.getParam("twitter/strict_follow_raidus_1",       param_strict_follow_raidus_1      );
+		nh.getParam("twitter/strict_follow_raidus_2",       param_strict_follow_raidus_2      );
+		nh.getParam("twitter/strict_follow_x_offset",       param_strict_follow_x_offset      );
+		nh.getParam("twitter/strict_follow_y_offset",       param_strict_follow_y_offset      );
 
 		std_msgs::UInt32 state_msg;
 		state_msg.data = state;
