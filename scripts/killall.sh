@@ -1,1 +1,1 @@
-killall roslaunch rosnode rviz rosbag rostopic
+killall roslaunch rosnode rviz rosbag rostopic play
