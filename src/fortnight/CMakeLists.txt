@@ -136,6 +136,7 @@ add_executable(fortnight src/fortnight.cpp)
 add_executable(fortnight_state_publisher src/fortnight_state_publisher.cpp)
 add_executable(twitter src/twitter.cpp)
 add_executable(grabber src/grabber.cpp)
+add_executable(docker src/docker.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
@@ -143,6 +144,7 @@ add_dependencies(fortnight ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED
 add_dependencies(fortnight_state_publisher ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 add_dependencies(twitter ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 add_dependencies(grabber ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(docker ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(fortnight
@@ -155,6 +157,9 @@ target_link_libraries(twitter
   ${catkin_LIBRARIES}
 )
 target_link_libraries(grabber
+  ${catkin_LIBRARIES}
+)
+target_link_libraries(docker
   ${catkin_LIBRARIES}
 )
 

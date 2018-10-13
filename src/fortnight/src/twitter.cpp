@@ -1209,8 +1209,9 @@ int main(int argc, char **argv) {
 			grabber_msg.data = GRABBER_PREPARE;
 		if (state == STATE_PERFORMING_ACTION)
 			grabber_msg.data = GRABBER_GRAB;
-		if ((state == STATE_DISABLED) || (state == STATE_CANCELLED) || (state == STATE_FINISHED)) {
+		if (state == STATE_DISABLED) {
 			// Do not send action
+			// Note: cancelled and finished states sends actions, so remember to reset twitter before using grabber from other node
 		}
 		else {
 			grabber_p.publish(grabber_msg);

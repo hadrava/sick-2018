@@ -19,4 +19,22 @@
 #define COMMAND_ENABLE       1 // sending during whole action
 #define COMMAND_RESET        2 // always resets to STATE_DISABLED
 
+
+
+#define D_STATE_DISABLED      0 // no action
+
+// order is important!
+#define D_STATE_START         1 // ends immediately, resets history
+#define D_STATE_ROTATE_TO_1   2 // rotating to first point
+#define D_STATE_MOVE_TO_1     3 // moving to first point
+#define D_STATE_ROTATE_TO_2   4 // rotating to second point
+#define D_STATE_MOVE_TO_2     5 // moving to second point
+#define D_STATE_DISPOSE_START 6 // sending release signal, changed when not at home
+#define D_STATE_DISPOSE_WAIT  7 // sending release signal, waiting
+#define D_STATE_DISPOSE_END   8 // sending GRABBER_DISABLED, waiting for at_home
+#define D_STATE_MOVE_TO_3     9 // moving to third point
+
+#define D_STATE_FINISHED      10 // no action
+#define D_STATE_CANCELLED     11 // no action
+
 #endif

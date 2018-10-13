@@ -1,0 +1,44 @@
+<launch>
+	<node pkg="fortnight" type="docker" name="docker" output="screen"> <!-- name: topic name, type: binary name, pkg: package name -->
+		<remap from="docker/input/odom" to="/odom" />
+		<remap from="docker/input/scan" to="/scan" />
+
+		<remap from="docker/input/grabber_at_home" to="/grabber/output/at_home" />
+		<remap from="docker/output/grabber_action" to="/grabber/input/action" />
+		<remap from="docker/output/cmd_vel" to="cmd_vel_mux/input/docker" />
+                <rosparam>
+                        storage_box_polygon: [
+                             1, -0.2,
+                             1, 0.7,
+                             -1, 0.7,
+                             -1, -0.2,
+                        ]
+                        storage_box_yaw: 0.0
+
+                        x_offset_entering: -0.4
+                        y_offset_entering: -0.36
+
+                        x_offset: 0
+                        y_offset: -0.25
+
+                        x_offset_leaving: 0.4
+                        y_offset_leaving: -0.36
+
+                        detect_avg_size:             20
+                        detect_history_max_duration: 1.5
+
+                        max_ang_speed:          1.3
+                        min_ang_speed:          0.13
+                        control_yaw_speed_coef: 2
+                        manipulation_angle:     0.08
+
+                        forward_speed:               0.5
+                        y_error_to_yaw_speed_coef:   4
+                        yaw_error_to_yaw_speed_coef: 2
+
+                        release_wait: 3
+                        box_edge_length: 0.4
+                        box_edge_width: 0.05
+                </rosparam>
+	</node>
+</launch>

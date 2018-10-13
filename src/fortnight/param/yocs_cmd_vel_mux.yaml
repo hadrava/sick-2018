@@ -18,6 +18,11 @@ subscribers:
     timeout:     0.5
     priority:    1
     short_desc:  "Twitter controller"
+  - name:        "Docker"
+    topic:       "/cmd_vel_mux/input/docker"
+    timeout:     0.5
+    priority:    2
+    short_desc:  "Docker controller"
   - name:        "Safety Controller"
     topic:       "/cmd_vel_mux/input/safety_controller"
     timeout:     0.1
