@@ -689,7 +689,7 @@ void control_based_on_history() {
 	}
 
 
-	double speed = 0.1; //TODO
+	double speed = 0.2; //TODO
 	tf::Quaternion transporter_orientation = orientation_of_speed(ang_speed, dir[0], dir[1], history[sz - 1].stamp);
 
 
