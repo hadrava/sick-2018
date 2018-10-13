@@ -2,6 +2,7 @@
 #include <tf/tf.h>
 #include <std_msgs/Empty.h>
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/PoseStamped.h>
 #include <nav_msgs/Odometry.h>
 #include <std_msgs/String.h>
 #include <move_base_msgs/MoveBaseAction.h>
@@ -23,18 +24,24 @@ void twitter_callback(const std_msgs::UInt32::ConstPtr &msg) {
 void docker_callback(const std_msgs::UInt32::ConstPtr &msg) {
 	docker_state = msg->data;
 }
-void grabber_callback(const std_msgs::UInt32::ConstPtr &msg) {
+void grabber_callback(const std_msgs::Bool::ConstPtr &msg) {
 	grabber_pressed = msg->data;
 }
 
 void twitter_do () {
 	std_msgs::UInt32 at_home_msg;
+	at_home_msg.data = COMMAND_RESET;
+	twitter_p.publish(at_home_msg);
+
 	at_home_msg.data = COMMAND_ENABLE;
 	twitter_p.publish(at_home_msg);
 }
 
 void docker_do () {
 	std_msgs::UInt32 at_home_msg;
+	at_home_msg.data = COMMAND_RESET;
+	docker_p.publish(at_home_msg);
+
 	at_home_msg.data = COMMAND_ENABLE;
 	docker_p.publish(at_home_msg);
 }
@@ -48,22 +55,22 @@ double point_yaw(double x, double y) {
 typedef actionlib::SimpleActionClient<move_base_msgs::MoveBaseAction> MoveBaseClient;
 
 bool go_to(double x, double y, double ori_x, double ori_y) {
-  static MoveBaseClient ac("move_base", true);
+  static MoveBaseClient ac("move_base_simple", true);
 
 	//tell the action client that we want to spin a thread by default
-	move_base_msgs::MoveBaseGoal goal;
+  geometry_msg::PoseStamped goal;
 
 	//we'll send a goal to the robot to move 1 meter forward
-	goal.target_pose.header.frame_id = "map";
-	goal.target_pose.header.stamp = ros::Time::now();
+	goal.header.frame_id = "map";
+	goal.header.stamp = ros::Time::now();
 
-	goal.target_pose.pose.position.x = x;
-	goal.target_pose.pose.position.y = y;
+	goal.pose.position.x = x;
+	goal.pose.position.y = y;
 
 	double yaw = point_yaw(ori_x, ori_y);
 	tf::Quaternion quat;
 	quat.setRPY(0, 0, yaw);
-	quaternionTFToMsg(quat, goal.target_pose.pose.orientation);
+	quaternionTFToMsg(quat, goal.pose.orientation);
 
 	ROS_INFO("Sending goal");
 	ac.sendGoal(goal);
@@ -96,8 +103,8 @@ int main(int argc, char **argv) {
 	grabber_p   = nh.advertise<std_msgs::UInt32>("grabber/input/action", 10);
 
 	ros::Subscriber twitter_s = nh.subscribe("twitter/output/state", 10, twitter_callback);
-	ros::Subscriber docker_s = nh.subscribe("twitter/output/state", 40, docker_callback);
-	ros::Subscriber grabber_s = nh.subscribe("twitter/output/start_button", 40, grabber_callback);
+	ros::Subscriber docker_s = nh.subscribe("docker/output/state", 40, docker_callback);
+	ros::Subscriber grabber_s = nh.subscribe("grabber/output/start_button", 40, grabber_callback);
 
 	int state = -1; // 0 go to grab
 	// 1 do grab :: twitter
@@ -145,6 +152,7 @@ int main(int argc, char **argv) {
 			state = 0;
 		}
 
+		ROS_INFO("state: %i", state);
 		ros::spinOnce();
 
 		loop_rate.sleep();
