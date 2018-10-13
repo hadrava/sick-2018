@@ -67,7 +67,10 @@ float param_yaw_error_to_yaw_speed_coef; // yaw to yaw
 
 float param_release_wait; //  3
 float param_box_edge_length; //  0.4
-float param_box_edge_width; //  0.05 (unused)
+float param_box_edge_width; //  0.05
+
+float param_bar_percentage; // 0.5
+int param_bar_count;      // 10
 
 #define LASER_HZ 15
 
@@ -166,6 +169,9 @@ void enable_callback(const std_msgs::UInt32::ConstPtr &msg) {
 	else { // COMMAND DISABLE
 		if ((state == D_STATE_START) || (state == D_STATE_ROTATE_TO_1)) {
 			state = D_STATE_CANCELLED;
+		}
+		else if (state == D_STATE_DISABLED) {
+			// do nothing
 		}
 		else {
 			state = D_STATE_MOVE_TO_3;
@@ -440,14 +446,20 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 		}
 	}
 	int size_f = detected_points_filtered.size();
+	ROS_INFO("filtered_point_count: %i", size_f);
+	if (!size_f)
+		return;
 	// now we have detected_points_filtered which are only those points inside polygon
 
 	double max_grad = - std::numeric_limits<double>::infinity();
 	tf::Quaternion optimal_direction;
 	double opt_min_met;
 	double opt_max_met;
-	int opt_idx;
-	for (float y_shift = -1.0; y_shift <= 1.0; y_shift += 0.01) {
+	int opt_idx = 0;
+	double opt_y_shift;
+	int opt_arr;
+	for (float y_stift = -1.0; y_stift <= 1.0; y_stift += 0.01) {
+		float y_shift = y_stift * y_stift * y_stift;
 		tf::Quaternion tested_direction(1.0, y_shift, 0, 0);
 		tested_direction = middle_storage_box_yaw_in_laser * tested_direction * middle_storage_box_yaw_in_laser.inverse();
 		// tested_direction is vector x,y, 0,0 in same direction as stripes
@@ -461,37 +473,59 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 			if (max_met < met)
 				max_met = met;
 		}
-		int array[102];
-		for (int idx = 0; idx < 101; idx++)
+		int *array = new int[param_bar_count + 2];
+		for (int idx = 0; idx < param_bar_count + 2; idx++)
 			array[idx] = 0;
 		for (int i = 0; i < size_f; i++) {
 			double met = metrics_of_point_acording_to_vector(detected_points_filtered[i], tested_direction);
-			int idx = 1.0 + ((met - min_met) * 100) / (max_met - min_met);
+			int idx = 1.0 + ((met - min_met) * (double) param_bar_count) / (max_met - min_met);
+			if (idx > param_bar_count + 1)
+				idx = param_bar_count + 1;
+			if (idx < 0)
+				idx = 0;
 			array[idx]++;
 		}
 		double grad = 0;
-		int max_array = 0;
-		for (int idx = 0; idx < 101; idx++) {
+		int max_array = -1;
+		for (int idx = 0; idx < param_bar_count + 1; idx++) {
 			grad += (array[idx] - array[idx + 1]) * (array[idx] - array[idx + 1]);
+			//grad += abs(array[idx] - array[idx + 1]);
 			if (max_array < array[idx]) {
 				max_array = array[idx];
 			}
 		}
+		ROS_INFO("Shift: %f, Grad: %f", y_shift, grad);
 		if (grad > max_grad) {
 			max_grad = grad;
 			optimal_direction = tested_direction;
 			opt_min_met = min_met;
 			opt_max_met = max_met;
-			for (int idx = 0; idx < 101; idx++) {
-				if (max_array < array[idx] * 2) {
+			opt_y_shift = y_shift;
+			for (int idx = param_bar_count + 1; idx >= 0; idx--) {
+				if (max_array * param_bar_percentage < (double) array[idx]) {
 					opt_idx = idx;
+					opt_arr = array[idx];
 					break;
 				}
 			}
 		}
+		delete[] array;
 	}
 	// Now se have optimal_direction, vector in laser which points to direction with maximal gradient
 	// and all opt_{min,max}_met opt_idx
+	ROS_INFO("optimal_direction: opt_y_shift: %f, max_grad: %f, met: mi/mx: %f %f, opt_idx: %i, array[opt_idx]: %i", opt_y_shift, max_grad, opt_min_met, opt_max_met, opt_idx, opt_arr);
+
+	// display it
+	geometry_msgs::PoseStamped arrow;
+	arrow.header.frame_id = "/laser";
+	arrow.header.stamp = middle_scan_stamp;
+	arrow.pose.position.x = 0;
+	arrow.pose.position.y = 0;
+	arrow.pose.position.z = 0;
+	tf::Quaternion arrow_orientation;
+	arrow_orientation.setRPY(0, 0, point_yaw(optimal_direction.x(), optimal_direction.y()));
+	quaternionTFToMsg(arrow_orientation, arrow.pose.orientation);
+	marker(0, arrow, param_box_edge_length, true);
 
 	// filter points and calculate their avg:
 	int count_pts = 0;
@@ -500,13 +534,21 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 	double avg_i = 0;
 	for (int i = 0; i < size_f; i++) {
 		double met = metrics_of_point_acording_to_vector(detected_points_filtered[i], optimal_direction);
-		int idx = 1.0 + ((met - opt_min_met) * 100) / (opt_max_met - opt_min_met);
+		int idx = 1.0 + ((met - opt_min_met) * (double) param_bar_count) / (opt_max_met - opt_min_met);
+		if (idx > param_bar_count + 1)
+			idx = param_bar_count + 1;
+		if (idx < 0)
+			idx = 0;
 		if (idx == opt_idx) {
 			count_pts++;
 			avg_x += detected_points_filtered[i].point.x;
 			avg_y += detected_points_filtered[i].point.y;
 			avg_i += i;
 		}
+	}
+	if (count_pts == 0) {
+		ROS_WARN("count_pts == 0");
+		return;
 	}
 	avg_x = avg_x / count_pts;
 	avg_y = avg_y / count_pts;
@@ -612,32 +654,36 @@ int main(int argc, char **argv) {
 	}
 
 	while (ros::ok()) {
-		nh.getParam("grabber/storage_box_yaw", param_storage_box_yaw);
+		nh.getParam("docker/storage_box_yaw", param_storage_box_yaw);
 
-		nh.getParam("grabber/x_offset_entering", param_x_offset_entering);
-		nh.getParam("grabber/y_offset_entering", param_y_offset_entering);
+		nh.getParam("docker/x_offset_entering", param_x_offset_entering);
+		nh.getParam("docker/y_offset_entering", param_y_offset_entering);
 
-		nh.getParam("grabber/x_offset", param_x_offset);
-		nh.getParam("grabber/y_offset", param_y_offset);
+		nh.getParam("docker/x_offset", param_x_offset);
+		nh.getParam("docker/y_offset", param_y_offset);
 
-		nh.getParam("grabber/x_offset_leaving", param_x_offset_leaving);
-		nh.getParam("grabber/y_offset_leaving", param_y_offset_leaving);
+		nh.getParam("docker/x_offset_leaving", param_x_offset_leaving);
+		nh.getParam("docker/y_offset_leaving", param_y_offset_leaving);
 
-		nh.getParam("grabber/detect_avg_size", param_detect_avg_size);
-		nh.getParam("grabber/detect_history_max_duration", param_detect_history_max_duration);
+		nh.getParam("docker/detect_avg_size", param_detect_avg_size);
+		nh.getParam("docker/detect_history_max_duration", param_detect_history_max_duration);
 
-		nh.getParam("grabber/max_ang_speed",          param_max_ang_speed         );
-		nh.getParam("grabber/min_ang_speed",          param_min_ang_speed         );
-		nh.getParam("grabber/control_yaw_speed_coef", param_control_yaw_speed_coef);
-		nh.getParam("grabber/manipulation_angle",     param_manipulation_angle    );
+		nh.getParam("docker/max_ang_speed",          param_max_ang_speed         );
+		nh.getParam("docker/min_ang_speed",          param_min_ang_speed         );
+		nh.getParam("docker/control_yaw_speed_coef", param_control_yaw_speed_coef);
+		nh.getParam("docker/manipulation_angle",     param_manipulation_angle    );
 
-		nh.getParam("grabber/forward_speed",               param_forward_speed              );
-		nh.getParam("grabber/y_error_to_yaw_speed_coef",   param_y_error_to_yaw_speed_coef  );
-		nh.getParam("grabber/yaw_error_to_yaw_speed_coef", param_yaw_error_to_yaw_speed_coef);
+		nh.getParam("docker/forward_speed",               param_forward_speed              );
+		nh.getParam("docker/y_error_to_yaw_speed_coef",   param_y_error_to_yaw_speed_coef  );
+		nh.getParam("docker/yaw_error_to_yaw_speed_coef", param_yaw_error_to_yaw_speed_coef);
 
-		nh.getParam("grabber/release_wait",    param_release_wait   );
-		nh.getParam("grabber/box_edge_length", param_box_edge_length);
-		nh.getParam("grabber/box_edge_width",  param_box_edge_width );
+		nh.getParam("docker/release_wait",    param_release_wait   );
+		nh.getParam("docker/box_edge_length", param_box_edge_length);
+		nh.getParam("docker/box_edge_width",  param_box_edge_width );
+
+		nh.getParam("docker/bar_percentage", param_bar_percentage);
+		nh.getParam("docker/bar_count",      param_bar_count     );
+
 
 
 

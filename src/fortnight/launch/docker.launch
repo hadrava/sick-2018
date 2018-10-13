@@ -8,12 +8,12 @@
 		<remap from="docker/output/cmd_vel" to="cmd_vel_mux/input/docker" />
                 <rosparam>
                         storage_box_polygon: [
-                             1, -0.2,
-                             1, 0.7,
-                             -1, 0.7,
-                             -1, -0.2,
+                             0.5, -0.7,
+                             0.5, 0.2,
+                             -0.5, 0.2,
+                             -0.5, -0.7,
                         ]
-                        storage_box_yaw: 0.0
+                        storage_box_yaw: 0.07
 
                         x_offset_entering: -0.4
                         y_offset_entering: -0.36
@@ -36,9 +36,12 @@
                         y_error_to_yaw_speed_coef:   4
                         yaw_error_to_yaw_speed_coef: 2
 
-                        release_wait: 3
+                        release_wait:    3
                         box_edge_length: 0.4
-                        box_edge_width: 0.05
+                        box_edge_width:  0.05
+
+                        bar_percentage: 0.5
+                        bar_count:      10
                 </rosparam>
 	</node>
 </launch>
