@@ -60,6 +60,8 @@
                         strict_follower_forward_speed:       0.5
                         strict_follower_y_to_yaw_speed_coef: 4
 
+                        todo_speed: 1.2
+                        x_thresh: -1.7
                 </rosparam>
 	</node>
 </launch>

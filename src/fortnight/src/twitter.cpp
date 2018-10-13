@@ -79,6 +79,9 @@ float param_strict_follow_y_offset; // should be positive
 float param_strict_follower_forward_speed; // maximal forward speed during strict_following
 float param_strict_follower_y_to_yaw_speed_coef; // try same value as param_y_error_to_yaw_speed_coef
 
+float param_todo_speed;
+float param_x_thresh;
+
 #define LASER_HZ 15
 
 
@@ -689,7 +692,7 @@ void control_based_on_history() {
 	}
 
 
-	double speed = 0.1; //TODO
+	double speed = param_todo_speed; //TODO
 	tf::Quaternion transporter_orientation = orientation_of_speed(ang_speed, dir[0], dir[1], history[sz - 1].stamp);
 
 
@@ -902,7 +905,9 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 
 	// filter block_position (polygon)
 	float min_range_max = std::numeric_limits<float>::infinity();
+        std::vector<bool> threshold_reached;
 	for (int b = 0; b < block_size_ok.size(); b++) {
+                bool thr = false;
 		if (block_size_ok[b]) {
 			int i = (block_ends[b] + block_begins[b]) / 2;
 			double angle = msg->angle_min + i * msg->angle_increment;
@@ -923,6 +928,8 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 				//ROS_INFO("odom :%f %f", point_odom.point.x, point_odom.point.y);
 
 				block_size_ok[b] = point_inside_polygon(point_map, transporter_polygon);
+                                if (point_map.point.x < param_x_thresh)
+                                    thr = true;
 				if ((block_size_ok[b]) && (min_range_max > block_range_max[b])) {
 					min_range_max = block_range_max[b];
 				}
@@ -933,6 +940,7 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 			}
 
 		}
+                threshold_reached.push_back(thr);
 	}
 
 	/*
@@ -970,6 +978,11 @@ void laser_callback(const sensor_msgs::LaserScan::ConstPtr &msg) { //ROS_INFO("I
 		int i_s = 0;
 		int i_c = 0;
 		double range = 0.;
+		if (threshold_reached[transporter_block]) {
+			if (state == STATE_FOLLOWING)
+				state =  STATE_PERFORMING_ACTION;
+		}
+
 		for (int i = block_begins[transporter_block]; i < block_ends[transporter_block]; i++) {
 			if ((msg->ranges[i] == msg->ranges[i]) && (msg->intensities[i] == max_rssi)) {
 				range += msg->ranges[i];
@@ -1198,6 +1211,8 @@ int main(int argc, char **argv) {
 		nh.getParam("twitter/strict_follower_forward_speed",       param_strict_follower_forward_speed      );
 		nh.getParam("twitter/strict_follower_y_to_yaw_speed_coef", param_strict_follower_y_to_yaw_speed_coef);
 
+		nh.getParam("twitter/todo_speed", param_todo_speed);
+		nh.getParam("twitter/x_thresh", param_x_thresh);
 
 		std_msgs::UInt32 state_msg;
 		state_msg.data = state;
