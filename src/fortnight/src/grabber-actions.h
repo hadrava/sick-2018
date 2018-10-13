@@ -8,4 +8,7 @@
 
 #define GRABBER_RELEASE          4 // perform action (it may be also observed on at_home state)
 
+#define GRABBER_P_HOME          'P'
+#define GRABBER_P_DO_TRICK      'p'
+
 #endif

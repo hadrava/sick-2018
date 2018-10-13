@@ -296,8 +296,43 @@ bool both_controls_with_caclulations(const geometry_msgs::PointStamped &center_i
 	return false;
 }
 
+tf::Quaternion tf_quat_angle_multiply(const tf::Quaternion &q, double m) {
+	tf::Quaternion ret;
+	double angle = q.getAngle();
+	if (angle > M_PI)
+		angle -= 2 * M_PI;
+	angle = angle * m;
+	ret.setRotation(q.getAxis(), angle);
+	return ret;
+}
+
 struct box_observation history_avg(int s_index, int cnt) { // s_index: first point to avg, cnt: count of points
-	return history[history.size() - 1];
+	struct box_observation ret;
+	ret.stamp          = history[s_index + cnt - 1].stamp;
+	ret.a_in_odom      = history[s_index + cnt - 1].a_in_odom;
+	ret.b_in_odom      = history[s_index + cnt - 1].b_in_odom;
+	ret.center_in_odom = history[s_index + cnt - 1].center_in_odom;
+
+	for (int i = s_index; i < s_index + cnt; i++) {
+		ret.a_in_odom.point.x      += history[i].a_in_odom.point.x;
+		ret.a_in_odom.point.y      += history[i].a_in_odom.point.y;
+		ret.b_in_odom.point.x      += history[i].b_in_odom.point.x;
+		ret.b_in_odom.point.y      += history[i].b_in_odom.point.y;
+		ret.center_in_odom.point.x += history[i].center_in_odom.point.x;
+		ret.center_in_odom.point.y += history[i].center_in_odom.point.y;
+	}
+
+	ret.a_in_odom.point.x      /= cnt;
+	ret.a_in_odom.point.y      /= cnt;
+	ret.b_in_odom.point.x      /= cnt;
+	ret.b_in_odom.point.y      /= cnt;
+	ret.center_in_odom.point.x /= cnt;
+	ret.center_in_odom.point.y /= cnt;
+
+	double yaw = point_yaw(ret.b_in_odom.point.x - ret.a_in_odom.point.x, ret.b_in_odom.point.y - ret.a_in_odom.point.y);
+	ret.orientation.setRPY(0, 0, yaw);
+
+	return ret;
 }
 
 void control_based_on_history() {

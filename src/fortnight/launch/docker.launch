@@ -24,7 +24,7 @@
                         x_offset_leaving: 0.4
                         y_offset_leaving: -0.36
 
-                        detect_avg_size:             20
+                        detect_avg_size:             60
                         detect_history_max_duration: 1.5
 
                         max_ang_speed:          1.3
