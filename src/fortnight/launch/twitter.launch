@@ -36,7 +36,7 @@
                         max_ang_speed:          1.3
                         min_ang_speed:          0.13
                         control_yaw_speed_coef: 2
-                        manipulation_angle:     0.08
+                        manipulation_angle:     0.2
 
                         x_offset: 0
                         y_offset: -0.36
@@ -50,18 +50,20 @@
                         yaw_error_to_yaw_speed_coef: 2
                         max_xy_error_yaw_mod:        10
 
-                        allowed_locked_error:         0.005
+                        allowed_locked_error:         0.17
                         allowed_locked_error_leaving: 0.1
 
-                        strict_follow_radius_1:              1
-                        strict_follow_radius_2:              1.5
+                        trict_follow_radius_1:              100
+                        strict_follow_radius_2:              150
                         strict_follow_x_offset:              -0.4
                         strict_follow_y_offset:              0.4
                         strict_follower_forward_speed:       0.5
                         strict_follower_y_to_yaw_speed_coef: 4
 
-                        todo_speed: 1.2
+                        todo_speed: 0.12
                         x_thresh: -1.7
                 </rosparam>
+		//ROS_INFO("sx x sy y  %f, %f, %f, %f", sx, x, sy, y);
+		//ROS_INFO("sx x sy y  %f, %f, %f, %f", sx, x, sy, y);
 	</node>
 </launch>
