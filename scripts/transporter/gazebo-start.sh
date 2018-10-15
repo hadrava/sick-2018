@@ -1,1 +1,0 @@
-roslaunch transporter gazebo.launch

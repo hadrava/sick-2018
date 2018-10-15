@@ -176,13 +176,13 @@ int main(int argc, char **argv) {
 		else if (state == 1) {
 			twitter_do();
 			if (twitter_state == STATE_CANCELLED) {
-				state == 99;
+				state = 99;
 			}
 			if (twitter_state == STATE_FINISHED) {
-				state == 2;
+				state = 2;
 			}
 			if (twitter_state == STATE_LEAVING) {
-				state == 2;
+				state = 2;
 			}
 		}
 		else if (state == 2) {
@@ -197,10 +197,10 @@ int main(int argc, char **argv) {
 		else if (state == 3) {
 			docker_do();
 			if (docker_state == D_STATE_CANCELLED) {
-				state == 99;
+				state = 99;
 			}
 			if (docker_state == D_STATE_FINISHED) {
-				state == 0;
+				state = 0;
 			}
 		}
 		else if (state == 99) {
