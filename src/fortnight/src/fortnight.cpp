@@ -11,6 +11,7 @@
 #include "states.h"
 #include <std_msgs/UInt32.h>
 #include <std_msgs/Bool.h>
+#include <unistd.h>
 
 ros::Publisher twitter_p;
 ros::Publisher docker_p;
@@ -155,7 +156,7 @@ int main(int argc, char **argv) {
 	ros::Subscriber grabber_s = nh.subscribe("grabber/output/start_button", 40, grabber_callback);
 	ros::Subscriber goal_s = nh.subscribe("move_base/status", 40, goal_callback);
 
-	int state = 2; // 0 go to grab
+	int state = -1; // 0 go to grab
 	// 1 do grab :: twitter
 	// 99 do grab :: twitter
 	while (ros::ok()) {
@@ -164,7 +165,8 @@ int main(int argc, char **argv) {
 		}
 		else if (state == 0) {
 			docker_donot();
-			go_to(2.5, 1.6, 0, 1);
+			go_to(-3, 2, -1, 0);
+			sleep(1);
 			state = 81;
 		}
 		else if (state == 81) {
@@ -187,12 +189,15 @@ int main(int argc, char **argv) {
 		}
 		else if (state == 2) {
 			twitter_donot();
-			if (go_to(-1, 0, 1, -1)) {
+			go_to(-1, 0.7, 1, -1);
+			sleep(1);
+			state = 82;
+		}
+		else if (state == 82) {
+			if (arrived)
 				state = 3;
-			}
-			else {
+			if (failed)
 				state = 99;
-			}
 		}
 		else if (state == 3) {
 			docker_do();
@@ -206,7 +211,7 @@ int main(int argc, char **argv) {
 		else if (state == 99) {
 			twitter_donot();
 			docker_donot();
-			go_to(-2, 0, -1, -1);
+			go_to(0, 2, 1, 0);
 			state = 0;
 		}
 

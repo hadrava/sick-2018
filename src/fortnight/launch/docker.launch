@@ -8,12 +8,12 @@
 		<remap from="docker/output/cmd_vel" to="cmd_vel_mux/input/docker" />
                 <rosparam>
                         storage_box_polygon: [
-                             0.3, -1.2,
-                             0.3, -0.3,
-                             -0.3, -0.3,
-                             -0.3, -1.2,
+                             0.4, -0.5,
+                             0.4, 0,
+                             -0.2, 0,
+                             -0.2, -0.5,
                         ]
-                        storage_box_yaw: 0.01
+                        storage_box_yaw: 0.05
 
                         x_offset_entering: -0.45
                         y_offset_entering: 0.31

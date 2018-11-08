@@ -8,18 +8,14 @@
 		<remap from="twitter/output/cmd_vel" to="cmd_vel_mux/input/twitter" />
                 <rosparam>
                         transporter_polygon: [
-                              1, 2.5,
-                              2, 4,
-                              3, 4,
-                              3, 2.5,
-                              2, 1,
-                              1, 0.5,
-                             -1, 0.5,
-                             -2, 1,
-                             -3, 2.5,
-                             -3, 3,
-                             -2, 3,
-                             -1, 2.5
+                             -5.86, 2.72,
+                             -4.50, 3.26,
+                             -3.14, 2.72,
+                             -2.60, 1.36,
+                             -3.14, 0,
+                             -4.50, -0.544,
+                             -5.86, 0,
+                             -6.40, 1.36
                         ]
                         transporter_radius: 0.1755
 
@@ -40,7 +36,7 @@
 
                         x_offset: 0
                         y_offset: -0.36
-                        y_offset_leaving: -0.7
+                        y_offset_leaving: -0.9
 
                         x_error_to_x_speed_coef:     2
                         x_error_to_yaw_speed_coef:   5
@@ -50,18 +46,18 @@
                         yaw_error_to_yaw_speed_coef: 2
                         max_xy_error_yaw_mod:        10
 
-                        allowed_locked_error:         0.17
+                        allowed_locked_error:         0.005
                         allowed_locked_error_leaving: 0.1
 
-                        trict_follow_radius_1:              100
+                        strict_follow_radius_1:              100
                         strict_follow_radius_2:              150
                         strict_follow_x_offset:              -0.4
                         strict_follow_y_offset:              0.4
                         strict_follower_forward_speed:       0.5
                         strict_follower_y_to_yaw_speed_coef: 4
 
-                        todo_speed: 0.12
-                        x_thresh: -1.7
+                        todo_speed: 0.1
+                        x_thresh: -20
                 </rosparam>
 		//ROS_INFO("sx x sy y  %f, %f, %f, %f", sx, x, sy, y);
 		//ROS_INFO("sx x sy y  %f, %f, %f, %f", sx, x, sy, y);
