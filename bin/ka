@@ -1,0 +1,8 @@
+killall roslaunch rosnode rviz rosbag rostopic play
+setleds +num
+sleep 0.2;
+setleds -num
+sleep 0.2;
+setleds +num
+sleep 0.2;
+setleds -num

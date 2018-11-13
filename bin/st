@@ -1,0 +1,34 @@
+setleds +num
+sleep 0.2;
+setleds -num
+
+roslaunch fortnight robot.launch &
+sleep 15;
+cd ~/sick2018/scripts/localization/
+./localization.sh s9-roh.yaml&
+sleep 2;
+roslaunch fortnight teleop.launch &
+sleep 2;
+roslaunch fortnight grabber.launch &
+sleep 2;
+roslaunch fortnight move_base.launch &
+sleep 2;
+roslaunch fortnight twitter.launch &
+sleep 2;
+roslaunch fortnight docker.launch &
+sleep 2;
+roslaunch fortnight fortnight.launch &
+sleep 10;
+rostopic pub /mobile_base/commands/sound kobuki_msgs/Sound "value: 1" &
+
+setleds +num
+sleep 0.2;
+setleds -num
+sleep 0.2;
+setleds +num
+sleep 0.2;
+setleds -num
+sleep 0.2;
+setleds +num
+sleep 0.2;
+setleds -num
