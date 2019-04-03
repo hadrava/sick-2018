@@ -1,4 +1,12 @@
-This is our project for the SICK robot day 2018.
+## Warning: this code was written in hurry - during last two weeks before competition ##
+
+This is our project for the [SICK robot day 2018](https://www.sick.com/de/en/robotday-2018/w/robotday/)
+
+Task: collect as many as possible red balls from moving transporter and bring them to box near starting position.
+
+- Robot was not successful during the competition.
+- Video of robot in action on [youtube](https://www.youtube.com/watch?v=FbryiO-kIiE) (filmed after the competition)
+
 
 How to build our software?
 
